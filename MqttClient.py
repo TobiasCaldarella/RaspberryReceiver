@@ -3,9 +3,9 @@ Created on 07.08.2019
 
 @author: tobias
 '''
-from RaspberryReceiver import Configuration
+import Configuration
 import paho.mqtt.client as mqtt
-from RaspberryReceiver.PowerController import PowerState
+from PowerController import PowerState
 
 class MqttClient(object):
     '''

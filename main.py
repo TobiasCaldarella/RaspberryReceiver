@@ -4,11 +4,11 @@ Created on 07.08.2019
 @author: tobias
 '''
 
-from RaspberryReceiver.Configuration import Configuration
+import Configuration
 import logging
 import time
-from RaspberryReceiver.MqttClient import MqttClient
-from RaspberryReceiver.PowerController import PowerController
+import MqttClient
+import PowerController
 
 if __name__ == '__main__':
     config = Configuration()

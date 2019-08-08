@@ -5,7 +5,7 @@ Created on 07.08.2019
 '''
 import RPi.GPIO as GPIO
 from enum import Enum
-from RaspberryReceiver.Configuration import Configuration
+import Configuration
 import time
 import threading
 
