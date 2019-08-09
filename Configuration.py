@@ -38,3 +38,6 @@ class Configuration(object):
         self.gpio_ukw_mute = 8
         self.gpio_speakers = 9
         
+        # MPD stuff
+        self.mpd_radio_playlist = "radio.m3u"
+        
