@@ -4,8 +4,10 @@ Created on 07.08.2019
 @author: tobias
 '''
 import Configuration
+import Coordinator
 import paho.mqtt.client as mqtt
-from PowerController import PowerState
+from GpioController import PowerState
+from threading import Event
 
 class MqttClient(object):
     '''
@@ -13,7 +15,7 @@ class MqttClient(object):
     '''
 
 
-    def __init__(self, config : Configuration):
+    def __init__(self, config : Configuration, coordinator: Coordinator):
         '''
         Constructor
         '''
@@ -26,9 +28,10 @@ class MqttClient(object):
         client.enable_logger(self.logger)
         client.username_pw_set(config.mqtt_user, password=config.mqtt_pass)
         client.message_callback_add(self.config.mqtt_base_topic + "/power", self.on_power_msg)
-        #client.on_message = on_message
         self.client = client
-        self.setPower = None
+        self.coordinator = coordinator
+        coordinator.mqttClient = self
+        self.connectEvent = Event()
         
     def connect(self):
         client = self.client
@@ -44,28 +47,31 @@ class MqttClient(object):
         if not isinstance(state, PowerState):
             raise ValueError
          
-        if state == PowerState.OFF:
+        if state == PowerState.ON:
             self.client.publish(self.config.mqtt_base_topic + "/power", payload="ON")
         else:
-            self.client.publish("power", payload="OFF")
+            self.client.publish(self.config.mqtt_base_topic + "/power", payload="OFF")
+    
+    def waitForSubscription(self):
+        self.connectEvent.wait()
     
     def on_power_msg(self, client, userdata, message):
         if self.setPower is None:
             self.logger.warn("Received Message on power topic but no callback is set")
             return
         if message.payload == "ON":
-            self.setPower(PowerState.ON)
+            self.coordinator.powerOn()
         elif message.payload == "OFF":
-            self.setPower(PowerState.OFF)
+            self.coordinator.powerOff()
         else:
             self.logger.warn("Received unexpected mqtt message on power topic: '%s'" % (message.payload))
     
     def on_subscribe(self, client, userdata, mid, granted_qos):
-        pass    
+        self.connectEvent.set()
     
     def on_connect(self, client, userdata, flags, rc):
         pass
         
     def on_disconnect(self, client, userdata, rc):
-        pass
+        self.connectEvent.clear()
     
