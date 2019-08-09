@@ -24,20 +24,29 @@ class Configuration(object):
         self.mqtt_base_topic = 'nikko7070'
         
         # GPIOs light
-        self.gpio_power = 1
-        self.gpio_needle = 2
-        self.gpio_backlight = 3
-        self.gpio_stereo = 4
+        self.gpio_power = 4
+        self.gpio_needle = 24
+        self.gpio_backlight = 18
+        self.gpio_stereo = 23
         
         # GPIOs tuning wheel mag sensors
-        self.gpio_mag_left = 5
-        self.gpio_mag_right = 6
+        self.gpio_mag_left = 20
+        self.gpio_mag_right = 21
 
         # GPIOs switches and buttons
-        self.gpio_pwr_btn = 7
-        self.gpio_ukw_mute = 8
-        self.gpio_speakers = 9
+        self.gpio_pwr_btn = 15
+        self.gpio_ukw_mute = 16
+        self.gpio_speakers = 12
         
         # MPD stuff
         self.mpd_radio_playlist = "radio"
+        
+        # Needle mover
+        self.gpio_needle_a = 19
+        self.gpio_needle_b = 13
+        self.gpio_needle_c = 6
+        self.gpio_needle_d = 5
+        self.needle_steps = 1000
+        self.needle_left_margin = 100
+        self.needle_sleep_time = 0.002
         

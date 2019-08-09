@@ -7,6 +7,7 @@ from GpioController import PowerState
 from MpdClient import MpdClient
 import threading
 from enum import Enum
+import time
 
 class _RadioState(Enum):
     STOPPED = 0
@@ -16,20 +17,26 @@ class Coordinator(object):
     '''
     classdocs
     '''
-    def __init__(self, logger):
+    def __init__(self, logger, config):
         '''
         Constructor
         '''
+        self.config = config
         self.mqttClient = None
         self.gpioController = None
         self.mpdClient = None
+        self.needle = None
+        self.wheel = None
         self.logger = logger
-        self.powerLock = threading.Lock()
         self.numChannels = 0
         self.currentChannel = 0
+        self.needleStepsPerChannel = 0
         self.radioState = _RadioState.STOPPED
+        self.busy = threading.Lock()
+        self.poweredOn = False
         
     def connectWifi(self):
+        self.gpioController.setStereoBlink(active=True, pause_s=2)
         pass
         
     def connectMqtt(self):
@@ -41,47 +48,107 @@ class Coordinator(object):
         self.gpioController.setStereolight(PowerState.OFF)
 
     def powerOff(self):
-        with self.powerLock:
+        with self.busy:
+            if self.poweredOn is False:
+                return
+            self.wheel.disable()
+            self.gpioController.disable_power_button()
+            self._radioStop()
+            self.poweredOn = False
             self.logger.info("Powering down...")
-            self.gpioController.setPowerAndSpeaker(PowerState.OFF)
             self.gpioController.setStereolight(PowerState.OFF)
             self.gpioController.setBacklight(PowerState.OFF)
             self.gpioController.setNeedlelight(PowerState.OFF)
+            self.gpioController.setPowerAndSpeaker(PowerState.OFF)
             self.gpioController.setStereoBlink(active=True, pause_s=10)
             self.mqttClient.publish_power_state(PowerState.OFF)
+            self.gpioController.enable_power_button()
     
     def powerOn(self):
-        with self.powerAndSpeakerLock:
+        with self.busy:
+            if self.poweredOn is True:
+                return
+            self.poweredOn = True
             self.logger.info("Powering up...")
-            self.gpioController.setPowerAndSpeaker(PowerState.ON)
-            self.gpioController.setStereolight(PowerState.ON)
+            self.gpioController.disable_power_button()
             self.gpioController.setBacklight(PowerState.ON)
-            self.gpioController.setNeedlelight(PowerState.ON)
+            self.gpioController.setStereolight(PowerState.OFF)
+            self.gpioController.setPowerAndSpeaker(PowerState.ON)
             self.mqttClient.publish_power_state(PowerState.ON)
+            self.wheel.enable()
+            self.gpioController.enable_power_button()
+            self._radioPlay()
             
     def initialize(self):
-        # todo: move needle to the absolute left...
-        # todo: download radio playlist    
+        self.gpioController.setStereoBlink(active=True, pause_s=0)
+        # todo: maybe do this in background?
+        if self.needle is not None:
+            self.needle.moveLeft(self.config.needle_steps)
+            self.needle.moveRight(self.config.needle_left_margin)
+            
+        # todo: download radio playlist
+        self.mpdClient.connect()  
         if self.mpdClient.loadPlaylist():
             self.numChannels = self.mpdClient.getNumTracksInRadioPlaylist()
+        self.logger.info("%i channels in radio playlist" % self.numChannels)
+        
+        if self.numChannels > 0 and self.config.needle_steps > 0:
+            self.needleStepsPerChannel = int((self.config.needle_steps-self.config.needle_left_margin)/self.numChannels)
+            self.logger.debug("%i needleStepsPerChannel" % self.needleStepsPerChannel)
+            
+        self.connectWifi()
+        self.connectMqtt()
+        self.gpioController.enable_power_button()
+        self.gpioController.setStereoBlink(active=True, pause_s=10)
         
     def channelUp(self):
-        # todo: move needle
-        if self.currentChannel < self.numChannels:
-            self.currentChannel+=1
-            self.mpdClient.playTitle(self.currentChannel)
+        with self.busy:
+            if self.radioState is _RadioState.STOPPED:
+                return
+            self.mpdClient.stop()
+            if self.currentChannel < self.numChannels:
+                if self.needle is not None:
+                    self.needle.moveRight(self.needleStepsPerChannel)
+                self.currentChannel+=1
+                self.mpdClient.playTitle(self.currentChannel)
     
     def channelDown(self):
-        # todo: move needle
-        if self.currentChannel > 0:
-            self.currentChannel-=1
-            self.mpdClient.playTitle(self.currentChannel)
+        with self.busy:
+            if self.radioState is _RadioState.STOPPED:
+                return
+            self.mpdClient.stop()
+            if self.needle is not None:
+                    self.needle.moveLeft(self.needleStepsPerChannel)
+            if self.currentChannel > 0:
+                self.currentChannel-=1
+                self.mpdClient.playTitle(self.currentChannel)
     
     def radioStop(self):
+        with self.busy:
+            self._radioStop()
+    
+    def _radioStop(self):
         self.radioState = _RadioState.STOPPED
         self.mpdClient.stop()
+        self.gpioController.setNeedlelight(PowerState.OFF)
         
     def radioPlay(self):
+        with self.busy:
+            self._radioPlay()
+    
+    def _radioPlay(self):
+        self.gpioController.setNeedlelight(PowerState.ON)
         self.radioState = _RadioState.PLAYING
         self.mpdClient.playTitle(self.currentChannel)
+    
+    def isPoweredOn(self):
+        return self.poweredOn
+    
+    def currentlyPlaying(self, state):
+        if state is True:
+            self.gpioController.setStereolight(PowerState.ON)
+        else:
+            self.gpioController.setStereolight(PowerState.OFF)
+        
+        
         

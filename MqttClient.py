@@ -27,7 +27,7 @@ class MqttClient(object):
         client.on_subscribe = self.on_subscribe
         client.enable_logger(self.logger)
         client.username_pw_set(config.mqtt_user, password=config.mqtt_pass)
-        client.message_callback_add(self.config.mqtt_base_topic + "/power", self.on_power_msg)
+        client.message_callback_add(self.config.mqtt_base_topic + "/power/set", self.on_power_msg)
         self.client = client
         self.coordinator = coordinator
         coordinator.mqttClient = self
@@ -36,7 +36,7 @@ class MqttClient(object):
     def connect(self):
         client = self.client
         client.connect(self.config.mqtt_server, self.config.mqtt_port)
-        client.subscribe(self.config.mqtt_base_topic + "/power")
+        client.subscribe(self.config.mqtt_base_topic + "/power/set")
         client.loop_start()
         
     def disconnect(self):
@@ -56,15 +56,20 @@ class MqttClient(object):
         self.connectEvent.wait()
     
     def on_power_msg(self, client, userdata, message):
-        if self.setPower is None:
+        if self.coordinator is None:
             self.logger.warn("Received Message on power topic but no callback is set")
             return
-        if message.payload == "ON":
+        pl = message.payload.decode("utf-8")
+        if pl == "ON":
             self.coordinator.powerOn()
-        elif message.payload == "OFF":
+        elif pl == "OFF":
             self.coordinator.powerOff()
+        elif pl == "UP":
+            self.coordinator.channelUp()
+        elif pl == "DOWN":
+            self.coordinator.channelDown()
         else:
-            self.logger.warn("Received unexpected mqtt message on power topic: '%s'" % (message.payload))
+            self.logger.warn("Received unexpected mqtt message on power topic: '%s'" % (pl))
     
     def on_subscribe(self, client, userdata, mid, granted_qos):
         self.connectEvent.set()
