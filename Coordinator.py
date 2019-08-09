@@ -6,6 +6,11 @@ Created on 08.08.2019
 from GpioController import PowerState
 from MpdClient import MpdClient
 import threading
+from enum import Enum
+
+class _RadioState(Enum):
+    STOPPED = 0
+    PLAYING = 1
 
 class Coordinator(object):
     '''
@@ -20,6 +25,9 @@ class Coordinator(object):
         self.mpdClient = None
         self.logger = logger
         self.powerLock = threading.Lock()
+        self.numChannels = 0
+        self.currentChannel = 0
+        self.radioState = _RadioState.STOPPED
         
     def connectWifi(self):
         pass
@@ -50,10 +58,30 @@ class Coordinator(object):
             self.gpioController.setBacklight(PowerState.ON)
             self.gpioController.setNeedlelight(PowerState.ON)
             self.mqttClient.publish_power_state(PowerState.ON)
+            
+    def initialize(self):
+        # todo: move needle to the absolute left...
+        # todo: download radio playlist    
+        if self.mpdClient.loadPlaylist():
+            self.numChannels = self.mpdClient.getNumTracksInRadioPlaylist()
         
     def channelUp(self):
-        pass
+        # todo: move needle
+        if self.currentChannel < self.numChannels:
+            self.currentChannel+=1
+            self.mpdClient.playTitle(self.currentChannel)
     
     def channelDown(self):
-        pass
+        # todo: move needle
+        if self.currentChannel > 0:
+            self.currentChannel-=1
+            self.mpdClient.playTitle(self.currentChannel)
+    
+    def radioStop(self):
+        self.radioState = _RadioState.STOPPED
+        self.mpdClient.stop()
+        
+    def radioPlay(self):
+        self.radioState = _RadioState.PLAYING
+        self.mpdClient.playTitle(self.currentChannel)
         

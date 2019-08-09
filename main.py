@@ -11,6 +11,7 @@ import MqttClient
 import GpioController
 import Coordinator
 import TuningWheel
+import MpdClient
 from time import sleep
 
 if __name__ == '__main__':
@@ -37,7 +38,11 @@ if __name__ == '__main__':
 
     coordinator.connectWifi()
     coordinator.connectMqtt()
+    coordinator.initialize()
+    coordinator.radioPlay()
     
-    sleep(10)
+    while True:
+        logger.debug("-MARK-")
+        sleep(10)
     
     

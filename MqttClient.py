@@ -15,7 +15,7 @@ class MqttClient(object):
     '''
 
 
-    def __init__(self, config : Configuration, coordinator: Coordinator):
+    def __init__(self, config: Configuration, coordinator: Coordinator):
         '''
         Constructor
         '''
