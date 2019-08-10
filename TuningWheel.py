@@ -41,24 +41,22 @@ class TuningWheel(object):
         
     def do_right_sensor(self, ch):
         self.logger.debug("right sensor triggered")
-        if self.firstDown is Side.LEFT:
+        if self.firstDown is Side.LEFT and GPIO.input(self.gpio_left_sensor) is GPIO.LOW:
             # left was already down, now trigger
-            self.firstDown = Side.NONE
             self.logger.debug("wheel counterclockwise")
             if self.enabled:
                 self.coordinator.channelDown()
-        else:
+        elif GPIO.input(self.gpio_left_sensor) is GPIO.HIGH:
             self.firstDown = Side.RIGHT
     
     def do_left_sensor(self, ch):
         self.logger.debug("left sensor triggered")
-        if self.firstDown is Side.RIGHT:
+        if self.firstDown is Side.RIGHT and GPIO.input(self.gpio_right_sensor) is GPIO.LOW:
             # left was already down, now trigger
-            self.firstDown = Side.NONE
             self.logger.debug("wheel clockwise")
             if self.enabled:
                 self.coordinator.channelUp()
-        else:
+        elif GPIO.input(self.gpio_right_sensor) is GPIO.HIGH:
             self.firstDown = Side.LEFT
             
     def do_button(self, ch):
