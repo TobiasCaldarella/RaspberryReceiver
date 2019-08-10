@@ -25,38 +25,44 @@ class TuningWheel(object):
         '''
         self.gpio_right_sensor = config.gpio_mag_right
         self.gpio_left_sensor = config.gpio_mag_left
+        self.gpio_button = config.wheel_button
         GPIO.setup(self.gpio_right_sensor, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(self.gpio_left_sensor, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.setup(self.gpio_button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         self.logger = config.logger
         coordinator.wheel = self
         self.coordinator = coordinator
-        self.lastLevel = None
+        self.firstDown = Side.NONE
         self.enabled = False
     
-        GPIO.add_event_detect(self.gpio_right_sensor, GPIO.BOTH, self.do_right_sensor)
-        GPIO.add_event_detect(self.gpio_left_sensor, GPIO.BOTH, self.do_left_sensor)
+        GPIO.add_event_detect(self.gpio_right_sensor, GPIO.FALLING, self.do_right_sensor, bouncetime=40)
+        GPIO.add_event_detect(self.gpio_left_sensor, GPIO.FALLING, self.do_left_sensor, bouncetime=40)
+        GPIO.add_event_detect(self.gpio_button, GPIO.FALLING, self.do_button, bouncetime=300)
         
     def do_right_sensor(self, ch):
-        newState = GPIO.input(self.gpio_right_sensor)
-        self.logger.debug("right sensor changed => %s" % newState)
-        if not self.enabled:
-            return
-        if newState == self.lastLevel:
-            self.logger.debug("wheel clockwise")
-            self.coordinator.channelUp()
+        self.logger.debug("right sensor triggered")
+        if self.firstDown is Side.LEFT:
+            # left was already down, now trigger
+            self.firstDown = Side.NONE
+            self.logger.debug("wheel counterclockwise")
+            if self.enabled:
+                self.coordinator.channelDown()
         else:
-            self.lastLevel = newState
+            self.firstDown = Side.RIGHT
     
     def do_left_sensor(self, ch):
-        newState = GPIO.input(self.gpio_left_sensor)
-        self.logger.debug("left sensor changed => %s" % newState)
-        if not self.enabled:
-            return
-        if newState == self.lastLevel:
-            self.logger.debug("wheel counter-clockwise")
-            self.coordinator.channelDown()
+        self.logger.debug("left sensor triggered")
+        if self.firstDown is Side.RIGHT:
+            # left was already down, now trigger
+            self.firstDown = Side.NONE
+            self.logger.debug("wheel clockwise")
+            if self.enabled:
+                self.coordinator.channelUp()
         else:
-            self.lastLevel = newState
+            self.firstDown = Side.LEFT
+            
+    def do_button(self, ch):
+        self.logger.debug("button triggered")
     
     def enable(self):
         self.logger.debug("Wheel enabled")

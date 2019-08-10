@@ -7,6 +7,7 @@ Created on 08.08.2019
 from mpd import MPDClient
 import sys
 import threading
+import time
 
 class _connection:
     def __init__(self, parent):
@@ -19,6 +20,54 @@ class _connection:
     def __exit__(self, type, value, traceback):
         self.parent.disconnect()
         #return True # do not throw any exceptions from here... but we need logging!
+
+class MpdClientEventListener(object):
+    def __init__(self, config, coordinator):
+        self.config = config
+        self.coordinator = coordinator
+        self.listen = True
+        self.listenerThread = threading.Thread(target=self.do_listen)
+        self.client = MPDClient()
+        self.client.idletimeout = 60
+        
+    def connect(self):
+        try:
+            self.client.connect("127.0.0.1", 6600)
+        except:
+            self.config.logger.warn("MpdClientEventListener.connect() failed: '%s'" % (sys.exc_info()[0]))
+    
+    def disconnect(self):
+        try:
+            self.client.close()
+        except:
+            self.config.logger.warn("Exception during MpdClientEventListener.close(): '%s'" % (sys.exc_info()[0])) 
+        try:
+            self.client.disconnect()
+        except:
+            self.config.logger.warn("Exception during MpdClientEventListener.disconnect(): '%s'" % (sys.exc_info()[0])) 
+            
+    def do_listen(self):
+        while self.listen is True:
+            try:
+                self.config.logger.debug("getting mpd player status...")
+                stat = self.client.status()
+                if 'bitrate' in stat and int(stat['bitrate']) > 0:
+                    # currently streaming
+                    self.config.logger.info("MPD playing")
+                    self.coordinator.currentlyPlaying(True)
+                else:
+                    self.config.logger.info("MPD not playing")
+                self.config.logger.debug("waiting for mpd player status update...")
+                self.client.idle('player') # todo: catch exception here!
+            except:
+                self.config.logger.debug("idle/status failed, will try again")
+                self.disconnect()
+                self.connect()
+                time.sleep(1)
+    
+    def startListener(self):
+        self.listenerThread.start()
+
 
 class MpdClient(object):
     '''
@@ -36,17 +85,21 @@ class MpdClient(object):
         self.coordinator = coordinator
         if coordinator is not None:
             coordinator.mpdClient = self
+        self.listener = MpdClientEventListener(config, coordinator)
+        self.listener.startListener()
         
     def connect(self):
         self.client.connect("127.0.0.1", 6600)
     
     def disconnect(self):
         try:
-            self.listen = False
             self.client.close()
+        except:
+            self.config.logger.warn("Exception during MpdClient.close(): '%s'" % (sys.exc_info()[0])) 
+        try:
             self.client.disconnect()
         except:
-            self.config.logger.warn("Exception during MpdClient.disconnect(): %s" % (sys.exc_info()[0])) 
+            self.config.logger.warn("Exception during MpdClient.disconnect(): '%s'" % (sys.exc_info()[0])) 
     
     def getNumTracksInRadioPlaylist(self):
         with self.connection:
@@ -68,29 +121,11 @@ class MpdClient(object):
     def playTitle(self, title):
         self.coordinator.currentlyPlaying(False)
         with self.connection:
-            self.client.play(title)
-            for i in range(10):
-                self.config.logger.debug("waiting for mpd status update...")
-                try:
-                    self.client.idle('player')
-                    stat = self.client.status()
-                    if 'bitrate' in stat and int(stat['bitrate']) > 0:
-                        # currently streaming
-                        self.config.logger.info("MPD playing")
-                        self.coordinator.currentlyPlaying(True)
-                        break
-                    else:
-                        self.config.logger.info("MPD not playing")
-                except:
-                    self.config.logger.debug("idle/status failed, will try again")
-                    self.disconnect()
-                    self.connect()
-                    continue
-                
+            self.client.send_play(title)                
         
     def stop(self):
         with self.connection:
-            self.client.stop()
+            self.client.send_stop()
             self.coordinator.currentlyPlaying(False)
             
     

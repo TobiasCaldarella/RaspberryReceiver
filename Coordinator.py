@@ -117,10 +117,10 @@ class Coordinator(object):
             if self.radioState is _RadioState.STOPPED:
                 return
             self.mpdClient.stop()
-            if self.needle is not None:
-                    self.needle.moveLeft(self.needleStepsPerChannel)
             if self.currentChannel > 0:
                 self.currentChannel-=1
+                if self.needle is not None:
+                    self.needle.moveLeft(self.needleStepsPerChannel)
                 self.mpdClient.playTitle(self.currentChannel)
     
     def radioStop(self):

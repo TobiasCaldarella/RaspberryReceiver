@@ -36,11 +36,11 @@ class GpioController(object):
         self.coordinator = coordinator
         coordinator.gpioController = self
         
-        for pin in [ self.gpio_backlight, self.gpio_needle, self.gpio_stereo ]:
+        for pin in [ self.gpio_backlight, self.gpio_needle, self.gpio_stereo, self.gpio_speakers ]:
             if pin is not None:
                 GPIO.setup(pin, GPIO.OUT, initial = GPIO.LOW)
             
-        for pin in [ self.gpio_pwr, self.gpio_speakers ]:
+        for pin in [ self.gpio_pwr ]:
             if pin is not None:
                 GPIO.setup(pin, GPIO.OUT, initial = GPIO.HIGH)
         
@@ -69,16 +69,16 @@ class GpioController(object):
         # relais is active on low!
         if state is PowerState.OFF:
             if self.gpio_speakers is not None:
-                GPIO.output(self.gpio_speakers, GPIO.HIGH)
+                GPIO.output(self.gpio_speakers, GPIO.LOW)
                 self.logger.debug("Speakers off")
                 time.sleep(0.5)
-            GPIO.output(self.gpio_pwr, GPIO.HIGH)
+            GPIO.output(self.gpio_pwr, GPIO.HIGH) # active on low!
             time.sleep(1.0)
         else:
-            GPIO.output(self.gpio_pwr, GPIO.LOW) # enable speakers after 2 seconds
+            GPIO.output(self.gpio_pwr, GPIO.LOW) # active on low!
             time.sleep(2.0)
             if self.gpio_speakers is not None:
-                GPIO.output(self.gpio_speakers, GPIO.LOW)
+                GPIO.output(self.gpio_speakers, GPIO.HIGH)
                 self.logger.debug("Speakers on")
         
     def dimmLight(self, state: PowerState, pwm, steps=5):

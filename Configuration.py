@@ -32,6 +32,7 @@ class Configuration(object):
         # GPIOs tuning wheel mag sensors
         self.gpio_mag_left = 20
         self.gpio_mag_right = 21
+        self.wheel_button = 25
 
         # GPIOs switches and buttons
         self.gpio_pwr_btn = 15
