@@ -121,11 +121,11 @@ class MpdClient(object):
     def playTitle(self, title):
         self.coordinator.currentlyPlaying(False)
         with self.connection:
-            self.client.send_play(title)                
+            self.client.play(title)                
         
     def stop(self):
         with self.connection:
-            self.client.send_stop()
+            self.client.stop()
             self.coordinator.currentlyPlaying(False)
             
     
