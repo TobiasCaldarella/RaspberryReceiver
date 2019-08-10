@@ -81,13 +81,13 @@ class GpioController(object):
                 GPIO.output(self.gpio_speakers, GPIO.HIGH)
                 self.logger.debug("Speakers on")
         
-    def dimmLight(self, state: PowerState, pwm, steps=5):
+    def dimmLight(self, state: PowerState, pwm, steps=10):
         if state == PowerState.ON:
             if steps > 0:
                 r = range(0, 100, int(100/steps))
                 for dc in r:
                     pwm.ChangeDutyCycle(dc)
-                    time.sleep(0.1)
+                    time.sleep(0.05)
             pwm.ChangeDutyCycle(100)
         else:
             if steps > 0:
