@@ -28,7 +28,7 @@ class MpdClientEventListener(object):
         self.listen = True
         self.listenerThread = threading.Thread(target=self.do_listen)
         self.client = MPDClient()
-        self.client.idletimeout = 60
+        self.client.idletimeout = 1
         
     def connect(self):
         try:
