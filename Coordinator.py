@@ -107,6 +107,7 @@ class Coordinator(object):
         self.gpioController.setStereoBlink(active=True, pause_s=10)
         
     def invalidChannel(self):
+        self.logger.info("Invalid channel requested")
         self.gpioController.setBacklight(PowerState.OFF)
         self.gpioController.setBacklight(PowerState.ON)
     
@@ -143,6 +144,7 @@ class Coordinator(object):
             if ch < 0 or ch >= self.numChannels:
                 self.invalidChannel()
                 return
+            self.mpdClient.stop()
             channelDiff = ch - self.currentChannel
             if channelDiff > 0:
                 self.needle.moveRight(channelDiff * self.needleStepsPerChannel)
