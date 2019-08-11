@@ -73,4 +73,9 @@ begin
   prog = RaspberryRadio
   config = 0
 end
+begin
+  button = KEY_OK
+  prog = RaspberryRadio
+  config = ok
+end
 

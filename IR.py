@@ -106,7 +106,16 @@ class IR(object):
                 digit = 9
             elif "0" in code:
                 self.logger.debug("LIRC: '0'")
-                digit = 0                
+                digit = 0
+            elif "ok" in code:
+                self.logger.debug("LIRC: 'ok'")
+                with self.twoDigitLock:
+                    if self.firstDigit is None:
+                        continue
+                    # cancel timeout and change immediately with one digit
+                    two_digit_timeout.cancel()
+                    
+                self.do_two_digit_timeout()   
             else:
                 self.logger.warn("Received unknown command from LIRC: '%s'" % code)
                 continue
