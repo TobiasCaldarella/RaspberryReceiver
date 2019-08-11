@@ -106,6 +106,10 @@ class Coordinator(object):
         self.ir.enable()
         self.gpioController.setStereoBlink(active=True, pause_s=10)
         
+    def invalidChannel(self):
+        self.gpioController.setBacklight(PowerState.OFF)
+        self.gpioController.setBacklight(PowerState.ON)
+    
     def channelUp(self):
         with self.busy:
             if self.radioState is _RadioState.STOPPED:
@@ -116,6 +120,8 @@ class Coordinator(object):
                     self.needle.moveRight(self.needleStepsPerChannel)
                 self.currentChannel+=1
                 self.mpdClient.playTitle(self.currentChannel)
+            else:
+                self.invalidChannel()
     
     def channelDown(self):
         with self.busy:
@@ -127,12 +133,15 @@ class Coordinator(object):
                 if self.needle is not None:
                     self.needle.moveLeft(self.needleStepsPerChannel)
                 self.mpdClient.playTitle(self.currentChannel)
+            else:
+                self.invalidChannel()
     
     def setChannel(self, ch):
         with self.busy:
             if self.radioState is _RadioState.STOPPED:
                 return
             if ch < 0 or ch >= self.numChannels:
+                self.invalidChannel()
                 return
             channelDiff = ch - self.currentChannel
             if channelDiff > 0:
