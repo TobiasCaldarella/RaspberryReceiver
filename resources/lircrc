@@ -1,0 +1,76 @@
+begin
+  button = KEY_POWER
+  prog = RaspberryReceiver
+  config = power
+end
+begin
+  button = KEY_CHANNELUP
+  prog = RaspberryReceiver
+  config = channel_up
+end
+begin
+  button = KEY_CHANNELDOWN
+  prog = RaspberryReceiver
+  config = channel_down
+end
+begin
+  button = KEY_VOLUMEUP
+  prog = RaspberryReceiver
+  config = volume_up
+end
+begin
+  button = KEY_VOLUMEDOWN
+  prog = RaspberryReceiver
+  config = volume_down
+end
+begin
+  button = KEY_1
+  prog = RaspberryReceiver
+  config = 1
+end
+begin
+  button = KEY_2
+  prog = RaspberryReceiver
+  config = 2
+end
+begin
+  button = 3
+  prog = RaspberryReceiver
+  config = 3
+end
+begin
+  button = 4
+  prog = RaspberryReceiver
+  config = 4
+end
+begin
+  button = 5
+  prog = RaspberryReceiver
+  config = 5
+end
+begin
+  button = 6
+  prog = RaspberryReceiver
+  config = 6
+end
+begin
+  button = 7
+  prog = RaspberryReceiver
+  config = 7
+end
+begin
+  button = 8
+  prog = RaspberryReceiver
+  config = 8
+end
+begin
+  button = 9
+  prog = RaspberryReceiver
+  config = 9
+end
+begin
+  button = 0
+  prog = RaspberryReceiver
+  config = 0
+end
+
