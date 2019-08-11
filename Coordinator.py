@@ -138,6 +138,7 @@ class Coordinator(object):
                 self.invalidChannel()
     
     def setChannel(self, ch):
+        ch-=1 # channel starts with 1 (human friendly numbering), mpd however starts counting at 0
         with self.busy:
             if self.radioState is _RadioState.STOPPED:
                 return
