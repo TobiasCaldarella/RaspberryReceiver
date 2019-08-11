@@ -23,6 +23,8 @@ class IR(object):
         self.logger.debug("IR initialized")
         self.run = True
         self.enabled = False
+        self.firstDigit = None
+        self.twoDigitLock = threading.Lock()
        
     def connect(self):
         self.logger.debug("IR connecting...")
@@ -36,10 +38,18 @@ class IR(object):
         self.logger.debug("IR disabled")
         self.enabled = False
     
+    def do_two_digit_timeout(self):
+        with self.twoDigitLock:
+            if self.firstDigit is not None:
+                self.logger.debug("Two digit input timed out. Assuming %i" % self.firstDigit)
+                ch = self.firstDigit
+                self.firstDigit = None
+                self.coordinator.setChannel(ch)
+    
     def do_getCode(self):
         coordinator = self.coordinator
         self.logger.debug("...IR connected")
-        firstDigit = None
+        two_digit_timeout = None
         while self.run is True:
             code = lirc.nextcode()
             if self.enabled is not True:
@@ -47,7 +57,7 @@ class IR(object):
             digit = None
             self.logger.debug("got code from IR: '%s'" % code)
             self.disable()
-            t = threading.Timer(0.2, lambda: self.enable())
+            t = threading.Timer(0.2, self.enable)
             t.start()
             if "power" in code:
                 self.logger.info("LIRC: 'power'")
@@ -99,15 +109,22 @@ class IR(object):
                 digit = 0                
             else:
                 self.logger.warn("Received unknown command from LIRC: '%s'" % code)
-            if digit is not None:
-                if firstDigit is None:
-                    firstDigit = digit
-                    t = threading.Timer(2.0, lambda: firstDigit=None)
-                    t.start()
+                
+            with self.twoDigitLock:
+                if digit is not None:
+                    if self.firstDigit is None:
+                        self.logger.debug("LIRC: first digit: %i" % digit)
+                        self.firstDigit = digit
+                        two_digit_timeout = threading.Timer(2.0, self.do_two_digit_timeout)
+                        two_digit_timeout.start()
+                    else:
+                        two_digit_timeout.cancel()
+                        digit+=(self.firstDigit*10)
+                        self.logger.debug("LIRC: two digit value: %i" % digit)
+                        self.firstDigit = None
+                        self.coordinator.setChannel(digit)
                 else:
-                    digit+=(firstDigit*10)
-                    firstDigit = None
-                    self.coordinator.setChannel(digit)
-            else:
-                firstDigit = None
+                    if two_digit_timeout is not None:
+                        two_digit_timeout.cancel()
+                    self.firstDigit = None
             

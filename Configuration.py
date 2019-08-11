@@ -48,6 +48,6 @@ class Configuration(object):
         self.gpio_needle_c = 6
         self.gpio_needle_d = 5
         self.needle_steps = 1000
-        self.needle_left_margin = 200
+        self.needle_left_margin = 150
         self.needle_sleep_time = 0.002
         
