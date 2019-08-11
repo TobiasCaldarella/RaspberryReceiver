@@ -155,6 +155,9 @@ class GpioController(object):
         GPIO.remove_event_detect(self.gpio_pwr_btn)
         
     def do_power_button(self, ch):
+        if GPIO.input(self.gpio_pwr_btn) != GPIO.LOW:
+            self.logger.debug("Spurious power button interrupt, ignored.")
+            return
         self.logger.debug("Power button pressed!")
         if self.coordinator.isPoweredOn() is True:
             self.coordinator.powerOff()

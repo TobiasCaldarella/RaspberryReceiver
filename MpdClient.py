@@ -28,7 +28,7 @@ class MpdClientEventListener(object):
         self.listen = True
         self.listenerThread = threading.Thread(target=self.do_listen)
         self.client = MPDClient()
-        self.client.idletimeout = 5
+        self.client.idletimeout = 60
         
     def connect(self):
         try:
@@ -58,7 +58,10 @@ class MpdClientEventListener(object):
                 else:
                     self.config.logger.info("MPD not playing")
                 self.config.logger.debug("waiting for mpd player status update...")
-                self.client.idle() # todo: catch exception here!
+                try:
+                    self.client.idle() # todo: catch exception here!
+                except:
+                    pass # throws an exception if nothing happened during timeout interval. Serious exceptions will be caught and dealt with if .status() fails
             except:
                 self.config.logger.debug("idle/status failed, will try again")
                 self.disconnect()
