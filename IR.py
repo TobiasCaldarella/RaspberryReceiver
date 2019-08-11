@@ -56,9 +56,9 @@ class IR(object):
                 continue
             digit = None
             self.logger.debug("got code from IR: '%s'" % code)
-            self.disable()
-            t = threading.Timer(0.2, self.enable)
-            t.start()
+            #self.disable()
+            #t = threading.Timer(0.2, self.enable)
+            #t.start()
             if "power" in code:
                 self.logger.info("LIRC: 'power'")
                 if coordinator.isPoweredOn() is True:
@@ -109,6 +109,7 @@ class IR(object):
                 digit = 0                
             else:
                 self.logger.warn("Received unknown command from LIRC: '%s'" % code)
+                continue
                 
             with self.twoDigitLock:
                 if digit is not None:

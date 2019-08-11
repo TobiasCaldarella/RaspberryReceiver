@@ -51,7 +51,7 @@ class MpdClientEventListener(object):
             try:
                 self.config.logger.debug("getting mpd player status...")
                 stat = self.client.status()
-                if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed'] > 0)):
+                if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed']) > 0):
                     # currently streaming
                     self.config.logger.info("MPD playing")
                     self.coordinator.currentlyPlaying(True)
