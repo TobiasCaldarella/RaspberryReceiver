@@ -86,17 +86,18 @@ class Coordinator(object):
             self.needle.moveLeft(self.config.needle_steps)
             self.needle.moveRight(self.config.needle_left_margin)
             
-        # todo: download radio playlist
+        self.connectWifi()
+        
+        # connect MPD client and load playlist
         self.mpdClient.connect()  
-        if self.mpdClient.loadPlaylist():
-            self.numChannels = self.mpdClient.getNumTracksInRadioPlaylist()
+        if self.mpdClient.loadRadioPlaylist():
+            self.numChannels = self.mpdClient.getNumTracksInPlaylist()
         self.logger.info("%i channels in radio playlist" % self.numChannels)
         
         if self.numChannels > 0 and self.config.needle_steps > 0:
             self.needleStepsPerChannel = int((self.config.needle_steps-self.config.needle_left_margin)/self.numChannels)
             self.logger.debug("%i needleStepsPerChannel" % self.needleStepsPerChannel)
             
-        self.connectWifi()
         self.connectMqtt()
         self.gpioController.enable_power_button()
         self.gpioController.setStereoBlink(active=True, pause_s=10)

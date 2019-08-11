@@ -101,12 +101,12 @@ class MpdClient(object):
         except:
             self.config.logger.warn("Exception during MpdClient.disconnect(): '%s'" % (sys.exc_info()[0])) 
     
-    def getNumTracksInRadioPlaylist(self):
+    def getNumTracksInPlaylist(self):
         with self.connection:
             pl = self.client.playlistinfo()
             return len(pl)
     
-    def loadPlaylist(self):
+    def loadRadioPlaylist(self):
         self.config.logger.debug("loading playlist '%s'" % (self.config.mpd_radio_playlist))
         try:
             with self.connection:

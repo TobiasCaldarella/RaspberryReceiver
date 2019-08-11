@@ -40,7 +40,7 @@ class Configuration(object):
         self.gpio_speakers = 12
         
         # MPD stuff
-        self.mpd_radio_playlist = "radio"
+        self.mpd_radio_playlist = "http://local_pub.openhabianpi/radio.m3u"
         
         # Needle mover
         self.gpio_needle_a = 19
