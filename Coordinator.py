@@ -146,13 +146,16 @@ class Coordinator(object):
                 self.invalidChannel()
                 return
             self.mpdClient.stop()
-            channelDiff = ch - self.currentChannel
-            if channelDiff > 0:
-                self.needle.moveRight(channelDiff * self.needleStepsPerChannel)
-            else:
-                self.needle.moveLeft(-channelDiff * self.needleStepsPerChannel)
-            self.currentChannel = ch
+            self.setNeedleForChannel(ch)
             self.mpdClient.playTitle(ch)
+    
+    def setNeedleForChannel(self, ch):
+        channelDiff = ch - self.currentChannel
+        if channelDiff > 0:
+            self.needle.moveRight(channelDiff * self.needleStepsPerChannel)
+        else:
+            self.needle.moveLeft(-channelDiff * self.needleStepsPerChannel)
+        self.currentChannel = ch
         
     def radioStop(self):
         with self.busy:
@@ -175,11 +178,13 @@ class Coordinator(object):
     def isPoweredOn(self):
         return self.poweredOn
     
-    def currentlyPlaying(self, state):
+    def currentlyPlaying(self, state, channel):
         if state is True:
             self.gpioController.setStereolight(PowerState.ON)
+            if channel != self.currentChannel:
+                self.logger.warn("Unexpected channel change, adjusting needle...")
+                self.setNeedleForChannel(channel) # also sets self.currentChannel
         else:
-            self.gpioController.setStereolight(PowerState.OFF)
-        
+            self.gpioController.setStereolight(PowerState.OFF)            
         
         

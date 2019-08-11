@@ -53,8 +53,9 @@ class MpdClientEventListener(object):
                 stat = self.client.status()
                 if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed']) > 0):
                     # currently streaming
-                    self.config.logger.info("MPD playing")
-                    self.coordinator.currentlyPlaying(True)
+                    currentSongId = int(stat['song'])
+                    self.config.logger.info("MPD playing track %i" % currentSongId)
+                    self.coordinator.currentlyPlaying(True, currentSongId)
                 else:
                     self.config.logger.info("MPD not playing")
                 self.config.logger.debug("waiting for mpd player status update...")
@@ -63,7 +64,7 @@ class MpdClientEventListener(object):
                 except:
                     pass # throws an exception if nothing happened during timeout interval. Serious exceptions will be caught and dealt with if .status() fails
             except:
-                self.config.logger.debug("idle/status failed, will try again")
+                self.config.logger.debug("mpd.status() failed, will try again")
                 self.disconnect()
                 self.connect()
                 time.sleep(1)
@@ -131,4 +132,22 @@ class MpdClient(object):
             self.client.stop()
             self.coordinator.currentlyPlaying(False)
             
+    def volumeUp(self):
+        with self.connection:
+            stat = self.client.state()
+            vol = stat['volume']
+            vol+=10
+            if vol > 100:
+                vol = 100
+            self.client.setVol(vol)
+        
+    def volumeDown(self):
+        with self.connection:
+            stat = self.client.state()
+            vol = stat['volume']
+            vol-=10
+            if vol < 0:
+                vol = 0
+            self.client.setVol(vol)
+            pass
     
