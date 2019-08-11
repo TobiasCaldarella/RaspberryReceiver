@@ -5,6 +5,7 @@ Created on 08.08.2019
 '''
 from GpioController import PowerState
 from MpdClient import MpdClient
+from IR import IR
 import threading
 from enum import Enum
 import time
@@ -28,6 +29,7 @@ class Coordinator(object):
         self.needle = None
         self.wheel = None
         self.logger = logger
+        self.ir = None
         self.numChannels = 0
         self.currentChannel = 0
         self.needleStepsPerChannel = 0
@@ -86,6 +88,7 @@ class Coordinator(object):
             self.needle.moveLeft(self.config.needle_steps)
             self.needle.moveRight(self.config.needle_left_margin)
             
+        self.ir.connect()
         self.connectWifi()
         
         # connect MPD client and load playlist
@@ -100,6 +103,7 @@ class Coordinator(object):
             
         self.connectMqtt()
         self.gpioController.enable_power_button()
+        self.ir.enable()
         self.gpioController.setStereoBlink(active=True, pause_s=10)
         
     def channelUp(self):

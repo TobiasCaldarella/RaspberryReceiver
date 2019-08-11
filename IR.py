@@ -5,7 +5,6 @@ Created on 11.08.2019
 '''
 import lirc
 import threading
-from main import coordinator
 
 class IR(object):
     '''
@@ -18,19 +17,28 @@ class IR(object):
         '''
         self.logger = config.logger
         self.coordinator = coordinator
+        coordinator.ir = self
         self.sockid = lirc.init('RaspberryRadio', 'resources/lircrc')
         self.workerThread = threading.Thread(target=self.do_getCode)
         self.logger.debug("IR initialized")
         self.run = True
+        self.enabled = False
        
     def connect(self):
         self.logger.debug("IR connecting...")
         self.workerThread.start()
         
+    def enable(self):
+        self.logger.debug("IR enabled")
+        self.enabled = True
+    
     def do_getCode(self):
+        coordinator = self.coordinator
         self.logger.debug("...IR connected")
         while self.run is True:
             code = lirc.nextcode()
+            if self.enabled is not True:
+                continue
             self.logger.debug("got code from IR: '%s'" % code)
             if "power" in code:
                 self.logger.info("LIRC: 'power'")
