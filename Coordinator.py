@@ -94,11 +94,17 @@ class Coordinator(object):
         self.connectWifi()
         
         # connect MPD client and load playlist
-        self.connectMqtt()
-        self.mpdClient.connect()  
-        if self.mpdClient.loadRadioPlaylist():
-            self.numChannels = self.mpdClient.getNumTracksInPlaylist()
-        self.logger.info("%i channels in radio playlist" % self.numChannels)
+        if self.connectMqtt() is not True:
+            self.logger.warn("Could not connect to MQTT. Disabled...")
+            self.mqttClient = None
+            
+        if self.mpdClient.connect() is not True:
+            self.logger.warn("Could not connect to MPD. Disabled...");
+            self.mpdClient = None
+        else:
+            if self.mpdClient.loadRadioPlaylist():
+                self.numChannels = self.mpdClient.getNumTracksInPlaylist()
+            self.logger.info("%i channels in radio playlist" % self.numChannels)
         
         if self.numChannels > 0 and self.config.needle_steps > 0:
             self.needleStepsPerChannel = int((self.config.needle_steps-self.config.needle_left_margin)/self.numChannels)
@@ -117,8 +123,8 @@ class Coordinator(object):
         with self.busy:
             if self.radioState is _RadioState.STOPPED:
                 return
-            self.mpdClient.stop()
             if self.currentChannel < (self.numChannels-1):
+                self.mpdClient.stop()
                 if self.needle is not None:
                     self.needle.moveRight(self.needleStepsPerChannel)
                 self.currentChannel+=1
@@ -130,8 +136,8 @@ class Coordinator(object):
         with self.busy:
             if self.radioState is _RadioState.STOPPED:
                 return
-            self.mpdClient.stop()
             if self.currentChannel > 0:
+                self.mpdClient.stop()
                 self.currentChannel-=1
                 if self.needle is not None:
                     self.needle.moveLeft(self.needleStepsPerChannel)
@@ -144,13 +150,13 @@ class Coordinator(object):
         with self.busy:
             if self.radioState is _RadioState.STOPPED:
                 return
-            if ch < 0 or ch >= self.numChannels:
+            if ch >= 0 and ch < self.numChannels:
+                self.mpdClient.stop()
+                self.setNeedleForChannel(ch)
+                self.mpdClient.playTitle(ch)
+            else:
                 self.invalidChannel()
-                return
-            self.mpdClient.stop()
-            self.setNeedleForChannel(ch)
-            self.mpdClient.playTitle(ch)
-    
+                
     def setNeedleForChannel(self, ch):
         channelDiff = ch - self.currentChannel
         if channelDiff > 0:
@@ -179,7 +185,7 @@ class Coordinator(object):
                 vol = 0
             self.mpdClient.setVolume(vol)
     
-    def setVolume(self):
+    def setVolume(self, vol):
         with self.busy:
             if self.radioState is _RadioState.STOPPED:
                 return

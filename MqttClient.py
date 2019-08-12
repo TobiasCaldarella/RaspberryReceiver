@@ -8,6 +8,8 @@ import Coordinator
 import paho.mqtt.client as mqtt
 from GpioController import PowerState
 from threading import Event
+from paho.mqtt.client import MQTT_ERR_SUCCESS
+import sys
 
 class MqttClient(object):
     '''
@@ -36,31 +38,53 @@ class MqttClient(object):
         self.connectEvent = Event()
         
     def connect(self):
-        client = self.client
-        client.connect(self.config.mqtt_server, self.config.mqtt_port)
-        client.subscribe(self.config.mqtt_base_topic + "/power/set")
-        client.subscribe(self.config.mqtt_base_topic + "/volume/set")
-        client.subscribe(self.config.mqtt_base_topic + "/channel/set")
-        client.loop_start()
+        try:
+            client = self.client
+            if client.connect(self.config.mqtt_server, self.config.mqtt_port) is not MQTT_ERR_SUCCESS:
+                self.logger.warn("mqtt.connect() failed")
+                return False
+            for topic in { self.config.mqtt_base_topic + "/power/set", self.config.mqtt_base_topic + "/volume/set", self.config.mqtt_base_topic + "/channel/set"}:
+                if client.subscribe(topic) is not MQTT_ERR_SUCCESS:
+                    self.logger.warn("mqtt subscription to topic '$s' failed." % topic)
+                    return False
+            client.loop_start()
+            return True
+        except:
+            self.logger.error("Caught exception in MqttClient.connect(): '%s'" % (sys.exc_info()[0]))
+            return False
         
     def disconnect(self):
-        self.client.loop_stop()
-        self.client.disconnect()
+        try:
+            self.client.loop_stop()
+            self.client.disconnect()
+            return True
+        except:
+            self.logger.error("Caught exception in MqttClient.disconnect(): '%s'" % (sys.exc_info()[0]))
+            return False
+            
         
     def publish_power_state(self, state):
         if not isinstance(state, PowerState):
             raise ValueError
-         
-        if state == PowerState.ON:
-            self.client.publish(self.config.mqtt_base_topic + "/power", payload="ON")
-        else:
-            self.client.publish(self.config.mqtt_base_topic + "/power", payload="OFF")
+        try:
+            if state == PowerState.ON:
+                self.client.publish(self.config.mqtt_base_topic + "/power", payload="ON")
+            else:
+                self.client.publish(self.config.mqtt_base_topic + "/power", payload="OFF")
+            return True
+        except:
+            self.logger.error("Caught exception in MqttClient.publish_power_state(): '%s'" % (sys.exc_info()[0]))
+            return False
+            
     
-    def pubInfo(self, state, channel+1, volume, currentSongInfo):
-        self.logger.debug("Publishing status update")
-        self.client.publish(self.config.mqtt_base_topic + "/volume", payload=volume)
-        self.client.publish(self.config.mqtt_base_topic + "/channel", payload=channel)
-        self.client.publish(self.config.mqtt_base_topic + "/info", payload=currentSongInfo) # todo: filter
+    def pubInfo(self, state, channel, volume, currentSongInfo):
+        try:
+            self.logger.debug("Publishing status update")
+            self.client.publish(self.config.mqtt_base_topic + "/volume", payload=volume)
+            self.client.publish(self.config.mqtt_base_topic + "/channel", payload=channel)
+            self.client.publish(self.config.mqtt_base_topic + "/info", payload=currentSongInfo) # todo: filter
+        except:
+            self.logger.error("Caught exception in MqttClient.pubInfo(): '%s'" % (sys.exc_info()[0]))
     
     def waitForSubscription(self):
         self.connectEvent.wait()
