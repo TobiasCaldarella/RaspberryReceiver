@@ -28,7 +28,7 @@ class MpdClientEventListener(object):
         self.listen = True
         self.listenerThread = threading.Thread(target=self.do_listen)
         self.client = MPDClient()
-        self.client.idletimeout = 1
+        #self.client.idletimeout = 1
         
     def connect(self):
         try:
@@ -82,7 +82,6 @@ class MpdClient(object):
         Constructor
         '''
         client = MPDClient()
-        client.idletimeout = 1
         self.client = client
         self.config = config
         self.connection = _connection(self)
@@ -116,6 +115,7 @@ class MpdClient(object):
             with self.connection:
                 self.client.clear()
                 self.client.load(self.config.mpd_radio_playlist)
+                self.client.single(1)
                 return True
         except:
             self.config.logger.error("Error loading mpd playlist!") 
@@ -125,11 +125,11 @@ class MpdClient(object):
     def playTitle(self, title):
         self.coordinator.currentlyPlaying(False)
         with self.connection:
-            self.client.play(title)                
+            self.client.send_play(title)                
         
     def stop(self):
         with self.connection:
-            self.client.stop()
+            self.client.send_stop()
             self.coordinator.currentlyPlaying(False)
             
     def volumeUp(self):

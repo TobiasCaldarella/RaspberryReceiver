@@ -78,6 +78,7 @@ class Coordinator(object):
             self.gpioController.setPowerAndSpeaker(PowerState.ON)
             self.mqttClient.publish_power_state(PowerState.ON)
             self.wheel.enable()
+            self._radioStop()
             self.gpioController.enable_power_button()
             self._radioPlay()
             
@@ -178,10 +179,10 @@ class Coordinator(object):
     def isPoweredOn(self):
         return self.poweredOn
     
-    def currentlyPlaying(self, state, channel):
+    def currentlyPlaying(self, state, channel = None):
         if state is True:
             self.gpioController.setStereolight(PowerState.ON)
-            if channel != self.currentChannel:
+            if channel is not None and channel != self.currentChannel:
                 self.logger.warn("Unexpected channel change, adjusting needle...")
                 self.setNeedleForChannel(channel) # also sets self.currentChannel
         else:
