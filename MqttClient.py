@@ -39,6 +39,8 @@ class MqttClient(object):
         client = self.client
         client.connect(self.config.mqtt_server, self.config.mqtt_port)
         client.subscribe(self.config.mqtt_base_topic + "/power/set")
+        client.subscribe(self.config.mqtt_base_topic + "/volume/set")
+        client.subscribe(self.config.mqtt_base_topic + "/channel/set")
         client.loop_start()
         
     def disconnect(self):
