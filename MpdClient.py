@@ -53,9 +53,11 @@ class MpdClientEventListener(object):
                 if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed']) > 0):
                     # currently streaming
                     currentSongId = int(stat['song'])
+                    currentVolume = int(stat['volume'])
+                    currentSongInfo = self.client.currentsong()
                     self.config.logger.info("MPD playing track %i" % currentSongId)
                     if self.coordinator:
-                        self.coordinator.currentlyPlaying(True, currentSongId)
+                        self.coordinator.currentlyPlaying(True, currentSongId, currentVolume, currentSongInfo)
                 else:
                     self.config.logger.info("MPD not playing")
                     if self.coordinator:
