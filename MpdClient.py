@@ -138,22 +138,6 @@ class MpdClient(object):
             self.client.send_stop()
             self.coordinator.currentlyPlaying(False)
             
-    def volumeUp(self):
+    def setVolume(self, vol):
         with self.connection:
-            stat = self.client.state()
-            vol = stat['volume']
-            vol+=10
-            if vol > 100:
-                vol = 100
             self.client.send_setVol(vol)
-        
-    def volumeDown(self):
-        with self.connection:
-            stat = self.client.state()
-            vol = stat['volume']
-            vol-=10
-            if vol < 0:
-                vol = 0
-            self.client.send_setVol(vol)
-            pass
-    
