@@ -19,7 +19,6 @@ class _connection:
             self.parent.connect()
     def __exit__(self, type, value, traceback):
         self.parent.disconnect()
-        #return True # do not throw any exceptions from here... but we need logging!
 
 class MpdClientEventListener(object):
     def __init__(self, config, coordinator):
@@ -55,14 +54,18 @@ class MpdClientEventListener(object):
                     # currently streaming
                     currentSongId = int(stat['song'])
                     self.config.logger.info("MPD playing track %i" % currentSongId)
-                    self.coordinator.currentlyPlaying(True, currentSongId)
+                    if self.coordinator:
+                        self.coordinator.currentlyPlaying(True, currentSongId)
                 else:
                     self.config.logger.info("MPD not playing")
-                self.config.logger.debug("waiting for mpd player status update...")
+                    if self.coordinator:
+                        self.coordinator.currentlyPlaying(False)
+                        
+                self.config.logger.debug("waiting for next mpd player status update...")
                 try:
-                    self.client.idle() # todo: catch exception here!
+                    self.client.idle()
                 except:
-                    pass # throws an exception if nothing happened during timeout interval. Serious exceptions will be caught and dealt with if .status() fails
+                    self.config.logger.debug("Exception during idle()")
             except:
                 self.config.logger.debug("mpd.status() failed, will try again")
                 self.disconnect()
@@ -70,6 +73,7 @@ class MpdClientEventListener(object):
                 time.sleep(1)
     
     def startListener(self):
+        self.connect()
         self.listenerThread.start()
 
 
@@ -95,10 +99,10 @@ class MpdClient(object):
         self.client.connect("127.0.0.1", 6600)
     
     def disconnect(self):
-        try:
-            self.client.close()
-        except:
-            self.config.logger.warn("Exception during MpdClient.close(): '%s'" % (sys.exc_info()[0])) 
+        #try:
+        #    self.client.close()
+        #except:
+        #    self.config.logger.warn("Exception during MpdClient.close(): '%s'" % (sys.exc_info()[0])) 
         try:
             self.client.disconnect()
         except:
@@ -139,7 +143,7 @@ class MpdClient(object):
             vol+=10
             if vol > 100:
                 vol = 100
-            self.client.setVol(vol)
+            self.client.send_setVol(vol)
         
     def volumeDown(self):
         with self.connection:
@@ -148,6 +152,6 @@ class MpdClient(object):
             vol-=10
             if vol < 0:
                 vol = 0
-            self.client.setVol(vol)
+            self.client.send_setVol(vol)
             pass
     
