@@ -58,7 +58,6 @@ class MqttClient(object):
     
     def pubInfo(self, state, channel+1, volume, currentSongInfo):
         self.logger.debug("Publishing status update")
-        #todo: decouple!
         self.client.publish(self.config.mqtt_base_topic + "/volume", payload=volume)
         self.client.publish(self.config.mqtt_base_topic + "/channel", payload=channel)
         self.client.publish(self.config.mqtt_base_topic + "/info", payload=currentSongInfo) # todo: filter
@@ -71,22 +70,25 @@ class MqttClient(object):
         if self.coordinator is None:
             self.logger.warn("Received Message on 'channel' topic but no callback is set")
             return
-        newChannel = message.payload
-        if isinstance(newChannel, int):
+        try:
+            newChannel = int(message.payload.decode("utf-8"))
             self.coordinator.setChannel(newChannel)
-        else:
-            self.logger.warn("Invalid data over 'channel' topic received")
+        except ValueError:
+            self.logger.warn("Invalid data over 'channel' topic received, must be a number")
             
     def on_volume_msg(self, client, userdata, message):
         self.logger.debug("Got volume msg")
         if self.coordinator is None:
             self.logger.warn("Received Message on 'volume' topic but no callback is set")
             return
-        newVolume = message.payload
-        if isinstance(newVolume, int):
-            self.coordinator.setVolume(newVolume)
-        else:
-            self.logger.warn("Invalid data over 'volume' topic received")
+        try:
+            newVolume = int(message.payload.decode("utf-8"))
+            if newVolume < 0 or newVolume > 100:
+                self.logger.warn("Invalid volume received. Must be: 0 < volume < 100")
+            else:
+                self.coordinator.setVolume(newVolume)
+        except ValueError:
+            self.logger.warn("Invalid data over 'volume' topic received, must be a number")
     
     def on_power_msg(self, client, userdata, message):
         if self.coordinator is None:
