@@ -158,6 +158,18 @@ class Coordinator(object):
             self.needle.moveLeft(-channelDiff * self.needleStepsPerChannel)
         self.currentChannel = ch
         
+    def volumeUp(self):
+        with self.busy:
+            if self.radioState is _RadioState.STOPPED:
+                return
+            self.mpdClient.volumeUp()
+            
+    def volumeDown(self):
+        with self.busy:
+            if self.radioState is _RadioState.STOPPED:
+                return
+            self.mpdClient.volumeDown()
+    
     def radioStop(self):
         with self.busy:
             self._radioStop()
