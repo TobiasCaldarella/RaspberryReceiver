@@ -179,6 +179,15 @@ class Coordinator(object):
                 vol = 0
             self.mpdClient.setVolume(vol)
     
+    def setVolume(self):
+        with self.busy:
+            if self.radioState is _RadioState.STOPPED:
+                return
+            if vol < 0 or vol > 100:
+                self.logger.warn("Received invalid volume: %i", vol)
+            else:
+                self.mpdClient.setVolume(vol)
+    
     def radioStop(self):
         with self.busy:
             self._radioStop()
