@@ -28,6 +28,8 @@ class MqttClient(object):
         client.enable_logger(self.logger)
         client.username_pw_set(config.mqtt_user, password=config.mqtt_pass)
         client.message_callback_add(self.config.mqtt_base_topic + "/power/set", self.on_power_msg)
+        client.message_callback_add(self.config.mqtt_base_topic + "/volume/set", self.on_volume_msg)
+        client.message_callback_add(self.config.mqtt_base_topic + "/channel/set", self.on_channel_msg)
         self.client = client
         self.coordinator = coordinator
         coordinator.mqttClient = self
@@ -52,12 +54,41 @@ class MqttClient(object):
         else:
             self.client.publish(self.config.mqtt_base_topic + "/power", payload="OFF")
     
+    def pubInfo(self, state, channel+1, volume, currentSongInfo):
+        self.logger.debug("Publishing status update")
+        #todo: decouple!
+        self.client.publish(self.config.mqtt_base_topic + "/volume", payload=volume)
+        self.client.publish(self.config.mqtt_base_topic + "/channel", payload=channel)
+        self.client.publish(self.config.mqtt_base_topic + "/info", payload=currentSongInfo) # todo: filter
+    
     def waitForSubscription(self):
         self.connectEvent.wait()
+        
+    def on_channel_msg(self, client, userdata, message):
+        self.logger.debug("Got channel msg")
+        if self.coordinator is None:
+            self.logger.warn("Received Message on 'channel' topic but no callback is set")
+            return
+        newChannel = message.payload
+        if isinstance(newChannel, int):
+            self.coordinator.setChannel(newChannel)
+        else:
+            self.logger.warn("Invalid data over 'channel' topic received")
+            
+    def on_volume_msg(self, client, userdata, message):
+        self.logger.debug("Got volume msg")
+        if self.coordinator is None:
+            self.logger.warn("Received Message on 'volume' topic but no callback is set")
+            return
+        newVolume = message.payload
+        if isinstance(newVolume, int):
+            self.coordinator.setVolume(newVolume)
+        else:
+            self.logger.warn("Invalid data over 'volume' topic received")
     
     def on_power_msg(self, client, userdata, message):
         if self.coordinator is None:
-            self.logger.warn("Received Message on power topic but no callback is set")
+            self.logger.warn("Received Message on 'power' topic but no callback is set")
             return
         pl = message.payload.decode("utf-8")
         if pl == "ON":
@@ -73,7 +104,7 @@ class MqttClient(object):
         elif pl == "VOLUME_DOWN":
             self.coordinator.volumeDown()
         else:
-            self.logger.warn("Received unexpected mqtt message on power topic: '%s'" % (pl))
+            self.logger.warn("Received unexpected mqtt message on 'power' topic: '%s'" % (pl))
     
     def on_subscribe(self, client, userdata, mid, granted_qos):
         self.connectEvent.set()
