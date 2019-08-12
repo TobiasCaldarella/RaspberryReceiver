@@ -10,6 +10,7 @@ from GpioController import PowerState
 from threading import Event
 from paho.mqtt.client import MQTT_ERR_SUCCESS
 import sys
+import json
 
 class MqttClient(object):
     '''
@@ -44,8 +45,8 @@ class MqttClient(object):
                 self.logger.warn("mqtt.connect() failed")
                 return False
             for topic in { self.config.mqtt_base_topic + "/power/set", self.config.mqtt_base_topic + "/volume/set", self.config.mqtt_base_topic + "/channel/set"}:
-                if client.subscribe(topic) is not MQTT_ERR_SUCCESS:
-                    self.logger.warn("mqtt subscription to topic '$s' failed." % topic)
+                if client.subscribe(topic)[0] is not MQTT_ERR_SUCCESS:
+                    self.logger.warn("mqtt subscription to topic '%s' failed." % topic)
                     return False
             client.loop_start()
             return True
@@ -71,6 +72,7 @@ class MqttClient(object):
                 self.client.publish(self.config.mqtt_base_topic + "/power", payload="ON")
             else:
                 self.client.publish(self.config.mqtt_base_topic + "/power", payload="OFF")
+                self.client.publish(self.config.mqtt_base_topic + "/info", payload='{"power": "OFF"}')
             return True
         except:
             self.logger.error("Caught exception in MqttClient.publish_power_state(): '%s'" % (sys.exc_info()[0]))
@@ -80,14 +82,22 @@ class MqttClient(object):
     def pubInfo(self, state, channel, volume, currentSongInfo):
         try:
             self.logger.debug("Publishing status update")
-            self.client.publish(self.config.mqtt_base_topic + "/volume", payload=volume)
-            self.client.publish(self.config.mqtt_base_topic + "/channel", payload=channel)
-            self.client.publish(self.config.mqtt_base_topic + "/info", payload=currentSongInfo) # todo: filter
+            self.client.publish(self.config.mqtt_base_topic + "/volume", payload=str(volume))
+            self.client.publish(self.config.mqtt_base_topic + "/channel", payload=str(channel))
+        
+            infoDict = currentSongInfo
+            infoDict['volume'] = volume
+            infoDict['channel'] = channel
+            infoDict['power'] = "ON"
+            self.client.publish(self.config.mqtt_base_topic + "/info", payload=str(json.dumps(infoDict))) # output info as json string
         except:
             self.logger.error("Caught exception in MqttClient.pubInfo(): '%s'" % (sys.exc_info()[0]))
     
     def waitForSubscription(self):
-        self.connectEvent.wait()
+        if self.connectEvent.wait(timeout=30.0) is True:
+            return True
+        self.logger.warn("Timeout waiting for MQTT subscription")
+        return False
         
     def on_channel_msg(self, client, userdata, message):
         self.logger.debug("Got channel msg")

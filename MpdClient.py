@@ -16,9 +16,13 @@ class _connection:
         try:
             self.parent.client.ping()
         except:
+            try:
+                self.parent.disconnect()
+            except:
+                pass
             self.parent.connect()
     def __exit__(self, type, value, traceback):
-        self.parent.disconnect()
+        pass
 
 class MpdClientEventListener(object):
     def __init__(self, config, coordinator):
@@ -27,6 +31,7 @@ class MpdClientEventListener(object):
         self.listen = True
         self.listenerThread = threading.Thread(target=self.do_listen)
         self.client = MPDClient()
+        self.client.idletimeout = 1
         
     def connect(self):
         try:

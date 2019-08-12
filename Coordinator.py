@@ -44,11 +44,14 @@ class Coordinator(object):
         
     def connectMqtt(self):
         if self.mqttClient is None:
-            return
+            return False
         self.gpioController.setStereoBlink(active=True, pause_s=1)
-        self.mqttClient.connect()
-        self.mqttClient.waitForSubscription()
+        if self.mqttClient.connect() is not True:
+            return False
+        if self.mqttClient.waitForSubscription() is not True:
+            return False
         self.gpioController.setStereolight(PowerState.OFF)
+        return True
 
     def powerOff(self):
         with self.busy:
@@ -77,7 +80,8 @@ class Coordinator(object):
             self.gpioController.setBacklight(PowerState.ON)
             self.gpioController.setStereolight(PowerState.OFF)
             self.gpioController.setPowerAndSpeaker(PowerState.ON)
-            self.mqttClient.publish_power_state(PowerState.ON)
+            if self.mqttClient is not None:
+                self.mqttClient.publish_power_state(PowerState.ON)
             self.wheel.enable()
             self._radioStop()
             self.gpioController.enable_power_button()
@@ -121,7 +125,7 @@ class Coordinator(object):
     
     def channelUp(self):
         with self.busy:
-            if self.radioState is _RadioState.STOPPED:
+            if not self.poweredOn:
                 return
             if self.currentChannel < (self.numChannels-1):
                 self.mpdClient.stop()
@@ -134,7 +138,7 @@ class Coordinator(object):
     
     def channelDown(self):
         with self.busy:
-            if self.radioState is _RadioState.STOPPED:
+            if not self.poweredOn:
                 return
             if self.currentChannel > 0:
                 self.mpdClient.stop()
@@ -148,7 +152,7 @@ class Coordinator(object):
     def setChannel(self, ch):
         ch-=1 # channel starts with 1 (human friendly numbering), mpd and neelde however start counting at 0
         with self.busy:
-            if self.radioState is _RadioState.STOPPED:
+            if not self.poweredOn:
                 return
             if ch >= 0 and ch < self.numChannels:
                 self.mpdClient.stop()
@@ -167,7 +171,7 @@ class Coordinator(object):
 
     def volumeUp(self):
         with self.busy:
-            if self.radioState is _RadioState.STOPPED:
+            if not self.poweredOn:
                 return
             vol = self.currentVolume
             vol+=10
@@ -177,7 +181,7 @@ class Coordinator(object):
 
     def volumeDown(self):
         with self.busy:
-            if self.radioState is _RadioState.STOPPED:
+            if not self.poweredOn:
                 return
             vol = self.currentVolume
             vol-=10
@@ -218,7 +222,8 @@ class Coordinator(object):
             self.radioState = _RadioState.PLAYING
             self.currentVolume = volume
             self.gpioController.setStereolight(PowerState.ON)
-            self.mqttClient.pubInfo(state, channel+1, volume, currentSongInfo)  # human-readable channel
+            if self.mqttClient is not None:
+                self.mqttClient.pubInfo(state, channel+1, volume, currentSongInfo)  # human-readable channel
             if channel is not None and channel != self.currentChannel:
                 self.logger.warn("Unexpected channel change, adjusting needle...")
                 self.setNeedleForChannel(channel) # also sets self.currentChannel
