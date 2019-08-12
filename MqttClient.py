@@ -64,10 +64,14 @@ class MqttClient(object):
             self.coordinator.powerOn()
         elif pl == "OFF":
             self.coordinator.powerOff()
-        elif pl == "UP":
+        elif pl == "CHANNEL_UP":
             self.coordinator.channelUp()
-        elif pl == "DOWN":
+        elif pl == "CHANNEL_DOWN":
             self.coordinator.channelDown()
+        elif pl == "VOLUME_UP":
+            self.coordinator.volumeUp()
+        elif pl == "VOLUME_DOWN":
+            self.coordinator.volumeDown()
         else:
             self.logger.warn("Received unexpected mqtt message on power topic: '%s'" % (pl))
     
