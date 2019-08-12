@@ -36,6 +36,7 @@ class Coordinator(object):
         self.radioState = _RadioState.STOPPED
         self.busy = threading.Lock()
         self.poweredOn = False
+        self.currentVolume = 0
         
     def connectWifi(self):
         self.gpioController.setStereoBlink(active=True, pause_s=2)
@@ -156,19 +157,27 @@ class Coordinator(object):
             self.needle.moveRight(channelDiff * self.needleStepsPerChannel)
         else:
             self.needle.moveLeft(-channelDiff * self.needleStepsPerChannel)
-        self.currentChannel = ch
-        
+        self.currentChannel = ch 
+
     def volumeUp(self):
         with self.busy:
             if self.radioState is _RadioState.STOPPED:
                 return
-            self.mpdClient.volumeUp()
-            
+            vol = self.currentVolume
+            vol+=10
+            if vol > 100:
+                vol = 100
+            self.mpdClient.setVolume(vol)
+
     def volumeDown(self):
         with self.busy:
             if self.radioState is _RadioState.STOPPED:
                 return
-            self.mpdClient.volumeDown()
+            vol = self.currentVolume
+            vol-=10
+            if vol < 0:
+                vol = 0
+            self.mpdClient.setVolume(vol)
     
     def radioStop(self):
         with self.busy:
@@ -193,6 +202,7 @@ class Coordinator(object):
     
     def currentlyPlaying(self, state, channel = None, volume = 0, currentSongInfo = ""):
         if state is True:
+            self.currentVolume = volume
             self.gpioController.setStereolight(PowerState.ON)
             self.mqttClient.pubInfo(state, channel+1, volume, currentSongInfo)  # human-readable channel
             if channel is not None and channel != self.currentChannel:
@@ -200,5 +210,4 @@ class Coordinator(object):
                 self.setNeedleForChannel(channel) # also sets self.currentChannel
         else:
             self.gpioController.setStereolight(PowerState.OFF)            
-        
         
