@@ -139,7 +139,7 @@ class Coordinator(object):
                 self.invalidChannel()
     
     def setChannel(self, ch):
-        ch-=1 # channel starts with 1 (human friendly numbering), mpd however starts counting at 0
+        ch-=1 # channel starts with 1 (human friendly numbering), mpd and neelde however start counting at 0
         with self.busy:
             if self.radioState is _RadioState.STOPPED:
                 return
@@ -191,9 +191,10 @@ class Coordinator(object):
     def isPoweredOn(self):
         return self.poweredOn
     
-    def currentlyPlaying(self, state, channel = None):
+    def currentlyPlaying(self, state, channel = None, volume = 0, currentSongInfo = ""):
         if state is True:
             self.gpioController.setStereolight(PowerState.ON)
+            self.mqttClient.pubInfo(state, channel+1, volume, currentSongInfo)  # human-readable channel
             if channel is not None and channel != self.currentChannel:
                 self.logger.warn("Unexpected channel change, adjusting needle...")
                 self.setNeedleForChannel(channel) # also sets self.currentChannel
