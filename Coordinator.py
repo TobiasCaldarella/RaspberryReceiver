@@ -94,6 +94,7 @@ class Coordinator(object):
         self.connectWifi()
         
         # connect MPD client and load playlist
+        self.connectMqtt()
         self.mpdClient.connect()  
         if self.mpdClient.loadRadioPlaylist():
             self.numChannels = self.mpdClient.getNumTracksInPlaylist()
@@ -103,7 +104,6 @@ class Coordinator(object):
             self.needleStepsPerChannel = int((self.config.needle_steps-self.config.needle_left_margin)/self.numChannels)
             self.logger.debug("%i needleStepsPerChannel" % self.needleStepsPerChannel)
             
-        self.connectMqtt()
         self.gpioController.enable_power_button()
         self.ir.enable()
         self.gpioController.setStereoBlink(active=True, pause_s=10)
@@ -193,7 +193,6 @@ class Coordinator(object):
             self._radioStop()
     
     def _radioStop(self):
-        self.radioState = _RadioState.STOPPED
         self.mpdClient.stop()
         self.gpioController.setNeedlelight(PowerState.OFF)
         
@@ -203,7 +202,6 @@ class Coordinator(object):
     
     def _radioPlay(self):
         self.gpioController.setNeedlelight(PowerState.ON)
-        self.radioState = _RadioState.PLAYING
         self.mpdClient.playTitle(self.currentChannel)
     
     def isPoweredOn(self):
@@ -211,6 +209,7 @@ class Coordinator(object):
     
     def currentlyPlaying(self, state, channel = None, volume = 0, currentSongInfo = ""):
         if state is True:
+            self.radioState = _RadioState.PLAYING
             self.currentVolume = volume
             self.gpioController.setStereolight(PowerState.ON)
             self.mqttClient.pubInfo(state, channel+1, volume, currentSongInfo)  # human-readable channel
@@ -218,5 +217,6 @@ class Coordinator(object):
                 self.logger.warn("Unexpected channel change, adjusting needle...")
                 self.setNeedleForChannel(channel) # also sets self.currentChannel
         else:
+            self.radioState = _RadioState.STOPPED
             self.gpioController.setStereolight(PowerState.OFF)            
         
