@@ -59,23 +59,18 @@ class MpdClientEventListener(object):
                     if self.coordinator:
                         self.coordinator.currentlyPlaying(False)    
                 else:
-                    self.config.logger.debug("MPD in state 'play', waiting for stream to start..'")
+                    self.config.logger.debug("MPD in state 'play',cheking stream...")
                     # player wants to play but maybe waits for stream to start, w have to poll
-                    while True:
-                        if ('state' in stat) and stat['state'] != 'play':
-                            self.config.logger.info("MPD left state 'play before playback started', stream error?")
-                            break
-                        if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed']) > 0):
-                            # currently streaming
-                            currentSongId = int(stat['song'])
-                            currentVolume = int(stat['volume'])
-                            currentSongInfo = self.client.currentsong()
-                            self.config.logger.info("MPD playing track %i" % currentSongId)
-                            if self.coordinator:
-                                self.coordinator.currentlyPlaying(True, currentSongId, currentVolume, currentSongInfo)
-                            break
-                        time.sleep(0.1)
-                        stat = self.client.status()
+                    if ('state' in stat) and stat['state'] != 'play':
+                        self.config.logger.info("MPD not streaming (yet?)")
+                    if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed']) > 0):
+                        # currently streaming
+                        currentSongId = int(stat['song'])
+                        currentVolume = int(stat['volume'])
+                        currentSongInfo = self.client.currentsong()
+                        self.config.logger.info("MPD playing track %i" % currentSongId)
+                        if self.coordinator:
+                            self.coordinator.currentlyPlaying(True, currentSongId, currentVolume, currentSongInfo)
 
                 self.config.logger.debug("waiting for next mpd player status update...")
                 try:
