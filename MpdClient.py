@@ -51,18 +51,16 @@ class MpdClientEventListener(object):
     def do_listen(self):
         while self.listen is True:
             try:
+                try:
+                    self.config.logger.debug("waiting for next mpd player status update...")
+                    self.client.idle()
+                except:
+                    self.config.logger.debug("Exception during idle()")
+                    
                 self.config.logger.debug("getting mpd player status...")
-                self.client.send_idle()
                 stat = self.client.status()
-                if ('state' not in stat) or stat['state'] != 'play':      
-                    self.config.logger.info("MPD not playing")
-                    if self.coordinator:
-                        self.coordinator.currentlyPlaying(False)    
-                else:
-                    self.config.logger.debug("MPD in state 'play',cheking stream...")
-                    # player wants to play but maybe waits for stream to start, w have to poll
-                    if ('state' in stat) and stat['state'] != 'play':
-                        self.config.logger.info("MPD not streaming (yet?)")
+                while ('state' in stat) and (stat['state'] == 'play'):
+                    # mpd wants to play but maybe waits for stream to start, we have to poll
                     if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed']) > 0):
                         # currently streaming
                         currentSongId = int(stat['song'])
@@ -71,12 +69,16 @@ class MpdClientEventListener(object):
                         self.config.logger.info("MPD playing track %i" % currentSongId)
                         if self.coordinator:
                             self.coordinator.currentlyPlaying(True, currentSongId, currentVolume, currentSongInfo)
-
-                self.config.logger.debug("waiting for next mpd player status update...")
-                try:
-                    self.client.recv_idle()
-                except:
-                    self.config.logger.debug("Exception during recv_idle()")
+                        break # can go and idle
+                    else:
+                        self.config.logger.info("MPD not streaming (yet?)")
+                        time.sleep(0.1)
+                        stat = self.client.status()
+                
+                if ('state' not in stat) or (stat['state'] != 'play'):
+                    self.config.logger.info("MPD not playing")
+                    if self.coordinator:
+                        self.coordinator.currentlyPlaying(False)
             except:
                 self.config.logger.debug("Could not get status from MPD, will reconnect")
                 self.disconnect()
