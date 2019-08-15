@@ -217,7 +217,7 @@ class Coordinator(object):
     def isPoweredOn(self):
         return self.poweredOn
     
-    def currentlyPlaying(self, state, channel = None, volume = 0, currentSongInfo = ""):
+    def currentlyPlaying(self, state, channel = None, volume = None, currentSongInfo = ""):
         if state is True:
             self.radioState = _RadioState.PLAYING
             self.currentVolume = volume
@@ -229,5 +229,7 @@ class Coordinator(object):
                 self.setNeedleForChannel(channel) # also sets self.currentChannel
         else:
             self.radioState = _RadioState.STOPPED
-            self.gpioController.setStereolight(PowerState.OFF)            
+            self.gpioController.setStereolight(PowerState.OFF)       
+            if self.mqttClient is not None:
+                self.mqttClient.pubInfo(state)
         

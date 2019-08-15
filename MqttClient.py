@@ -70,6 +70,7 @@ class MqttClient(object):
         try:
             if state == PowerState.ON:
                 self.client.publish(self.config.mqtt_base_topic + "/power", payload="ON")
+                self.client.publish(self.config.mqtt_base_topic + "/info", payload='{"power": "ON"}')
             else:
                 self.client.publish(self.config.mqtt_base_topic + "/power", payload="OFF")
                 self.client.publish(self.config.mqtt_base_topic + "/info", payload='{"power": "OFF"}')
@@ -82,13 +83,27 @@ class MqttClient(object):
     def pubInfo(self, state, channel, volume, currentSongInfo):
         try:
             self.logger.debug("Publishing status update")
-            self.client.publish(self.config.mqtt_base_topic + "/volume", payload=str(volume))
-            self.client.publish(self.config.mqtt_base_topic + "/channel", payload=str(channel))
-        
-            infoDict = currentSongInfo
-            infoDict['volume'] = volume
-            infoDict['channel'] = channel
-            infoDict['power'] = "ON"
+            
+            infoDict = {}
+            if currentSongInfo is not None:
+                infoDict = currentSongInfo
+            if volume is not None:
+                self.client.publish(self.config.mqtt_base_topic + "/volume", payload=str(volume))
+                infoDict['volume'] = volume
+            if channel is not None:
+                self.client.publish(self.config.mqtt_base_topic + "/channel", payload=str(channel))
+                infoDict['channel'] = channel
+            if 'title' not in infoDict: 
+                if 'name' in infoDict:
+                    infoDict['title'] = infoDict['name']
+                else:
+                    infoDict['title'] = "N/A" 
+            
+            # state is never none
+            if state is True:
+                infoDict['state'] = "Playing"
+            else:
+                infoDict['state'] = "Stopped"
             self.client.publish(self.config.mqtt_base_topic + "/info", payload=str(json.dumps(infoDict))) # output info as json string
         except:
             self.logger.error("Caught exception in MqttClient.pubInfo(): '%s'" % (sys.exc_info()[0]))
@@ -133,14 +148,6 @@ class MqttClient(object):
             self.coordinator.powerOn()
         elif pl == "OFF":
             self.coordinator.powerOff()
-        elif pl == "CHANNEL_UP":
-            self.coordinator.channelUp()
-        elif pl == "CHANNEL_DOWN":
-            self.coordinator.channelDown()
-        elif pl == "VOLUME_UP":
-            self.coordinator.volumeUp()
-        elif pl == "VOLUME_DOWN":
-            self.coordinator.volumeDown()
         else:
             self.logger.warn("Received unexpected mqtt message on 'power' topic: '%s'" % (pl))
     
