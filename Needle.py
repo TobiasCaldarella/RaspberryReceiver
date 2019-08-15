@@ -8,6 +8,7 @@ from time import sleep
 import RPi.GPIO as GPIO
 from Configuration import Configuration
 from Coordinator import Coordinator
+import threading
 
 class Needle(object):
     '''
@@ -24,6 +25,7 @@ class Needle(object):
         self.pinD = config.gpio_needle_d
         self.time = config.needle_sleep_time
         self.logger = config.logger
+        self.lock = threading.Lock()
 
         for pin in { self.pinA, self.pinB, self.pinC, self.pinD }:
             GPIO.setup(pin, GPIO.OUT)
@@ -79,25 +81,27 @@ class Needle(object):
         GPIO.output(self.pinA, False)
 
     def moveRight(self, steps: int):
-        self.logger.debug("Needle moving %i steps right" % steps)
-        for i in range (steps):    
-            self._Step1()
-            self._Step2()
-            self._Step3()
-            self._Step4()
-            self._Step5()
-            self._Step6()
-            self._Step7()
-            self._Step8()
+        with self.lock:
+            self.logger.debug("Needle moving %i steps right" % steps)
+            for i in range (steps):    
+                self._Step1()
+                self._Step2()
+                self._Step3()
+                self._Step4()
+                self._Step5()
+                self._Step6()
+                self._Step7()
+                self._Step8()
     
     def moveLeft(self, steps: int):
-        self.logger.debug("Needle moving %i steps left" % steps)
-        for i in range (steps):    
-            self._Step8()
-            self._Step7()
-            self._Step6()
-            self._Step5()
-            self._Step4()
-            self._Step3()
-            self._Step2()
-            self._Step1()
+        with self.lock:
+            self.logger.debug("Needle moving %i steps left" % steps)
+            for i in range (steps):    
+                self._Step8()
+                self._Step7()
+                self._Step6()
+                self._Step5()
+                self._Step4()
+                self._Step3()
+                self._Step2()
+                self._Step1()
