@@ -162,12 +162,17 @@ class Coordinator(object):
                 self.invalidChannel()
                 
     def setNeedleForChannel(self, ch):
+        if ch < 0 or ch > self.numChannels:
+            self.logger.warn("setNeedleForChannel(%i): invalid channel" % ch)
+            return;
+        
         channelDiff = ch - self.currentChannel
         if channelDiff > 0:
             self.needle.moveRight(channelDiff * self.needleStepsPerChannel)
         else:
             self.needle.moveLeft(-channelDiff * self.needleStepsPerChannel)
-        self.currentChannel = ch 
+        self.currentChannel = ch
+        self.currentlyPlaying() # update mqtt, will be done quite late otherwise
 
     def volumeUp(self):
         with self.busy:
@@ -197,6 +202,7 @@ class Coordinator(object):
                 self.logger.warn("Received invalid volume: %i", vol)
             else:
                 self.mpdClient.setVolume(vol)
+                self.currentVolume = vol
     
     def radioStop(self):
         with self.busy:
@@ -217,19 +223,29 @@ class Coordinator(object):
     def isPoweredOn(self):
         return self.poweredOn
     
-    def currentlyPlaying(self, state, channel = None, volume = None, currentSongInfo = ""):
-        if state is True:
-            self.radioState = _RadioState.PLAYING
+    def currentlyPlaying(self, state=None, channel = None, volume = None, currentSongInfo = None):
+        if volume is not None:
             self.currentVolume = volume
-            self.gpioController.setStereolight(PowerState.ON)
-            if self.mqttClient is not None:
-                self.mqttClient.pubInfo(state, channel+1, volume, currentSongInfo)  # human-readable channel
-            if channel is not None and channel != self.currentChannel:
-                self.logger.warn("Unexpected channel change, adjusting needle...")
-                self.setNeedleForChannel(channel) # also sets self.currentChannel
-        else:
-            self.radioState = _RadioState.STOPPED
-            self.gpioController.setStereolight(PowerState.OFF)       
-            if self.mqttClient is not None:
-                self.mqttClient.pubInfo(state)
+        if channel is not None and channel != self.currentChannel:
+            self.logger.warn("Unexpected channel change, adjusting needle and informing mqtt...")
+            self.setNeedleForChannel(channel) # also sets self.currentChannel
         
+        if state is not None:
+            if state is True:
+                self.radioState = _RadioState.PLAYING
+                self.gpioController.setStereolight(PowerState.ON)            
+            else:
+                self.radioState = _RadioState.STOPPED
+                self.gpioController.setStereolight(PowerState.OFF)
+        else:
+            if self.radioState is _RadioState.PLAYING:
+                state = True
+            else:
+                state = False
+            
+        if self.mqttClient is not None:
+            if self.isPoweredOn():
+                self.mqttClient.publish_power_state(PowerState.ON)
+            else:
+                self.mqttClient.publish_power_state(PowerState.OFF)
+            self.mqttClient.pubInfo(state, self.currentChannel+1, self.currentVolume, currentSongInfo, self.numChannels)  # human-readable channel

@@ -80,7 +80,7 @@ class MqttClient(object):
             return False
             
     
-    def pubInfo(self, state, channel, volume, currentSongInfo):
+    def pubInfo(self, state, channel, volume, currentSongInfo, numChannelsInPlaylist):
         try:
             self.logger.debug("Publishing status update")
             
@@ -93,6 +93,8 @@ class MqttClient(object):
             if channel is not None:
                 self.client.publish(self.config.mqtt_base_topic + "/channel", payload=str(channel))
                 infoDict['channel'] = channel
+            if numChannelsInPlaylist is not None:
+                infoDict['numChannelsInPlaylist'] = numChannelsInPlaylist
             if 'title' not in infoDict: 
                 if 'name' in infoDict:
                     infoDict['title'] = infoDict['name']

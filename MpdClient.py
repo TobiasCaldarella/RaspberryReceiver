@@ -8,6 +8,7 @@ from mpd import MPDClient
 import sys
 import threading
 import time
+import json
 
 class _connection:
     def __init__(self, parent):
@@ -50,40 +51,46 @@ class MpdClientEventListener(object):
             
     def do_listen(self):
         while self.listen is True:
-            try:
-                try:
-                    self.config.logger.debug("waiting for next mpd player status update...")
-                    self.client.idle()
-                except:
-                    self.config.logger.debug("Exception during idle()")
-                    
+            #try:
                 self.config.logger.debug("getting mpd player status...")
                 stat = self.client.status()
+                playing = False
+                currentSongInfo = None
                 while ('state' in stat) and (stat['state'] == 'play'):
                     # mpd wants to play but maybe waits for stream to start, we have to poll
                     if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed']) > 0):
                         # currently streaming
-                        currentSongId = int(stat['song'])
-                        currentVolume = int(stat['volume'])
                         currentSongInfo = self.client.currentsong()
-                        self.config.logger.info("MPD playing track %i" % currentSongId)
-                        if self.coordinator:
-                            self.coordinator.currentlyPlaying(True, currentSongId, currentVolume, currentSongInfo)
+                        self.config.logger.info("MPD playing %s" % json.dumps(currentSongInfo))
+                        playing = True
                         break # can go and idle
                     else:
-                        self.config.logger.info("MPD not streaming (yet?)")
+                        self.config.logger.debug("MPD not streaming (yet?)")
                         time.sleep(0.1)
                         stat = self.client.status()
                 
                 if ('state' not in stat) or (stat['state'] != 'play'):
                     self.config.logger.info("MPD not playing")
-                    if self.coordinator:
-                        self.coordinator.currentlyPlaying(False)
-            except:
-                self.config.logger.debug("Could not get status from MPD, will reconnect")
-                self.disconnect()
-                time.sleep(1)
-                self.connect()
+                
+                if self.coordinator:
+                    currentSongId = None
+                    currentVolume = None
+                    if 'song' in stat:
+                        currentSongId = int(stat['song'])
+                    if 'volume' in stat:
+                        currentVolume = int(stat['volume'])
+                    self.coordinator.currentlyPlaying(playing, currentSongId, currentVolume, currentSongInfo)
+                        
+                try:
+                    self.config.logger.debug("waiting for next mpd player status update...")
+                    self.client.idle()
+                except:
+                    self.config.logger.debug("Exception during idle()")
+            #except:
+                #self.config.logger.debug("Could not get status from MPD, will reconnect")
+                #self.disconnect()
+                #time.sleep(1)
+                #self.connect()
     
     def startListener(self):
         self.connect()
