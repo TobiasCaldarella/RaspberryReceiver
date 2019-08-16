@@ -142,7 +142,7 @@ class MpdClient(object):
                 pl = self.client.playlistinfo()
                 return len(pl)
             except:
-                self.logger.error("Caught exception in MqttClient.pubInfo(): '%s'" % (sys.exc_info()[0]))
+                self.logger.error("Caught exception in MpdClient.pubInfo(): '%s'" % (sys.exc_info()[0]))
                 return 0
     
     def loadRadioPlaylist(self):
@@ -164,7 +164,7 @@ class MpdClient(object):
                 self.client.send_play(title)
                 return True
             except:
-                self.logger.error("Caught exception in MqttClient.playTitle(): '%s'" % (sys.exc_info()[0]))
+                self.logger.error("Caught exception in MpdClient.playTitle(): '%s'" % (sys.exc_info()[0]))
                 return False
                 
         
@@ -174,15 +174,15 @@ class MpdClient(object):
                 self.client.send_stop()
                 return True
             except:
-                self.logger.error("Caught exception in MqttClient.stop(): '%s'" % (sys.exc_info()[0]))
+                self.logger.error("Caught exception in MpdClient.stop(): '%s'" % (sys.exc_info()[0]))
                 return False
             #self.coordinator.currentlyPlaying(False)
             
     def setVolume(self, vol):
         with self.connection:
             try:
-                self.client.send_setVol(vol)
+                self.client.send_setvol(vol)
                 return True
             except:
-                self.logger.error("Caught exception in MqttClient.setVolume(): '%s'" % (sys.exc_info()[0]))
+                self.logger.error("Caught exception in MpdClient.setVolume(): '%s'" % (sys.exc_info()[0]))
                 return False

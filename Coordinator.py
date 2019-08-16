@@ -129,9 +129,7 @@ class Coordinator(object):
                 return
             if self.currentChannel < (self.numChannels-1):
                 self.mpdClient.stop()
-                self.currentChannel+=1
-                if self.needle is not None:
-                    self.needle.moveRight(self.needleStepsPerChannel)
+                self.setNeedleForChannel(self.currentChannel+1) # this sets self.currentChannel!
                 self.mpdClient.playTitle(self.currentChannel)
             else:
                 self.invalidChannel()
@@ -142,9 +140,7 @@ class Coordinator(object):
                 return
             if self.currentChannel > 0:
                 self.mpdClient.stop()
-                self.currentChannel-=1
-                if self.needle is not None:
-                    self.needle.moveLeft(self.needleStepsPerChannel)
+                self.setNeedleForChannel(self.currentChannel-1) # this sets self.currentChannel!
                 self.mpdClient.playTitle(self.currentChannel)
             else:
                 self.invalidChannel()
@@ -162,9 +158,11 @@ class Coordinator(object):
                 self.invalidChannel()
                 
     def setNeedleForChannel(self, ch):
+        if self.needle is None:
+            return
         if ch < 0 or ch > self.numChannels:
             self.logger.warn("setNeedleForChannel(%i): invalid channel" % ch)
-            return;
+            return
         
         channelDiff = ch - self.currentChannel
         if channelDiff > 0:
@@ -226,9 +224,6 @@ class Coordinator(object):
     def currentlyPlaying(self, state=None, channel = None, volume = None, currentSongInfo = None):
         if volume is not None:
             self.currentVolume = volume
-        if channel is not None and channel != self.currentChannel:
-            self.logger.warn("Unexpected channel change, adjusting needle and informing mqtt...")
-            self.setNeedleForChannel(channel) # also sets self.currentChannel
         
         if state is not None:
             if state is True:
@@ -242,6 +237,10 @@ class Coordinator(object):
                 state = True
             else:
                 state = False
+        
+        if channel is not None and channel != self.currentChannel and state is True:
+            self.logger.warn("Unexpected channel change, adjusting needle and informing mqtt...")
+            self.setNeedleForChannel(channel) # also sets self.currentChannel
             
         if self.mqttClient is not None:
             if self.isPoweredOn():
