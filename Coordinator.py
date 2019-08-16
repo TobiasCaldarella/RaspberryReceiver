@@ -129,9 +129,9 @@ class Coordinator(object):
                 return
             if self.currentChannel < (self.numChannels-1):
                 self.mpdClient.stop()
+                self.currentChannel+=1
                 if self.needle is not None:
                     self.needle.moveRight(self.needleStepsPerChannel)
-                self.currentChannel+=1
                 self.mpdClient.playTitle(self.currentChannel)
             else:
                 self.invalidChannel()
