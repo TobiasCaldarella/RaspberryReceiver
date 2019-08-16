@@ -73,9 +73,11 @@ class IR(object):
                 coordinator.channelDown()
             elif "volume_up" in code:
                 self.logger.debug("LIRC: 'volume_up'")
+                coordinator.volumeUp()
                 pass
             elif "volume_down" in code:
                 self.logger.debug("LIRC: 'volume_down'")
+                coordinator.volumeDown()
                 pass
             elif "1" in code:
                 self.logger.debug("LIRC: '1'")
