@@ -16,6 +16,7 @@ import MpdClient
 import IR
 from time import sleep
 import RPi.GPIO as GPIO
+import Bluetooth
 
 GPIO.cleanup()
 GPIO.setmode(GPIO.BCM)
@@ -46,6 +47,7 @@ if __name__ == '__main__':
     pwrcnt = GpioController.GpioController(config, coordinator)
     mpdClient = MpdClient.MpdClient(config, coordinator)
     needle = Needle.Needle(config, coordinator)
+    bluetooth = Bluetooth.Bluetooth(config, coordinator)
     
     coordinator.initialize()
     

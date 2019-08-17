@@ -61,6 +61,7 @@ class Coordinator(object):
             if self.poweredOn is False:
                 return
             self.bluetooth.disable()
+            self.bluetoothConnected = False
             self.wheel.disable()
             self.gpioController.disable_power_button()
             self._radioStop()
@@ -119,7 +120,6 @@ class Coordinator(object):
             self.needleStepsPerChannel = int((self.config.needle_steps-self.config.needle_left_margin)/self.numChannels)
             self.logger.debug("%i needleStepsPerChannel" % self.needleStepsPerChannel)
             
-        self.bluetooth = Bluetooth(self.config, self)
         if self.bluetooth is not None:
             self.bluetooth.initialize()
             
@@ -137,7 +137,7 @@ class Coordinator(object):
             if not self.poweredOn:
                 return
             if self.currentChannel < (self.numChannels-1):
-                self._radioStop()
+                self._radioStop(False)
                 self.setNeedleForChannel(self.currentChannel+1) # this sets self.currentChannel!
                 self._radioPlay()
             else:
@@ -148,7 +148,7 @@ class Coordinator(object):
             if not self.poweredOn:
                 return
             if self.currentChannel > 0:
-                self._radioStop()
+                self._radioStop(False)
                 self.setNeedleForChannel(self.currentChannel-1) # this sets self.currentChannel!
                 self._radioPlay()
             else:
@@ -160,7 +160,7 @@ class Coordinator(object):
             if not self.poweredOn:
                 return
             if ch >= 0 and ch < self.numChannels:
-                self._radioStop()
+                self._radioStop(False)
                 self.setNeedleForChannel(ch)
                 self._radioPlay()
             else:
@@ -203,7 +203,7 @@ class Coordinator(object):
     
     def setVolume(self, vol):
         with self.busy:
-            if self.radioState is _RadioState.STOPPED:
+            if not self.poweredOn:
                 return
             if vol < 0 or vol > 100:
                 self.logger.warn("Received invalid volume: %i", vol)
@@ -215,9 +215,10 @@ class Coordinator(object):
         with self.busy:
             self._radioStop()
     
-    def _radioStop(self):
+    def _radioStop(self, needleLightOff=True):
         self.mpdClient.stop()
-        self.gpioController.setNeedlelight(PowerState.OFF)
+        if needleLightOff:
+            self.gpioController.setNeedlelight(PowerState.OFF)
         
     def radioPlay(self):
         with self.busy:
@@ -240,6 +241,7 @@ class Coordinator(object):
                 return
             if active is True:
                 self._radioStop()
+                self.bluetoothConnected = True
                 self.gpioController.setBacklight(PowerState.OFF)
                 self.gpioController.setBacklight(PowerState.ON)
                 self.gpioController.setStereoBlink(active=True, pause_s=1)
@@ -247,9 +249,8 @@ class Coordinator(object):
                 self.gpioController.setBacklight(PowerState.OFF)
                 self.gpioController.setBacklight(PowerState.ON)
                 self.gpioController.setStereolight(PowerState.OFF)
-                self._radioPlay()
-            
-            self.bluetoothConnected = active            
+                self.bluetoothConnected = False
+                self._radioPlay()            
     
     def currentlyPlaying(self, state=None, channel = None, volume = None, currentSongInfo = None):
         if volume is not None:

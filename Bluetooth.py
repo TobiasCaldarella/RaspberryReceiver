@@ -18,16 +18,17 @@ class Bluetooth(object):
         self.logger = config.logger
         self.coordinator = coordinator
         self.inotify = INotify()
-        mask = flags.CREATE | flags.DELETE | flags.MODIFY | flags.DELETE_SELF
+        mask = flags.CREATE | flags.DELETE | flags.MODIFY | flags.DELETE_SELF | flags.OPEN
         self.wd = self.inotify.add_watch('/sys/class/bluetooth/hci0', mask)
         self.device_connected = False
         self.playbackProcess = None
+        self.run = True
+        coordinator.bluetooth = self
     
     def initialize(self):
         self.disable()
         self.workerThread = threading.Thread(target=self._waitForEvent)
         self.workerThread.start()
-        pass
     
     def startPlayback(self):
         if self.playbackProcess is None:
@@ -47,23 +48,27 @@ class Bluetooth(object):
     
     def enable(self):
         self.logger.info("Enabling bluetooth")
-        os.system("rfkill unblock bluetooth")
+        os.system("/usr/sbin/rfkill unblock bluetooth")
     
     def disable(self):
         self.logger.info("Disabling bluetooth")
         self.stopPlayback()
-        os.system("rfkill block bluetooth")
+        os.system("/usr/sbin/rfkill block bluetooth")
         
     def _waitForEvent(self):
-        self.logger.debug("Waiting for bluetooth event...")
-        for event in self.inotify.read():
-            self.logger.debug("got bluetooth event: '%s'" % event)
-            numEntries = os.listdir('/sys/class/bluetooth/hci0/')
-            self.logger.debug("'%i' entries in /sys/class/bluetooth/hci0/" % numEntries)
+        while(self.run):
+            self.logger.debug("Waiting for bluetooth event or 5s timeout...")
+            for event in self.inotify.read(5000):
+                pass
+                #self.logger.debug("got bluetooth event: '%s'" % event)
+                
+            numEntries = len(os.listdir('/sys/class/bluetooth/'))
+            self.logger.debug("'%i' entries in /sys/class/bluetooth/" % numEntries)
             if numEntries > 1:
                 self.logger.debug("Bluetooth device connected")
                 if self.device_connected == False:
                     self.logger.info("New bluetooth device connected")
+                    self.device_connected = True
                     self.coordinator.bluetoothPlaying(True)
                     self.startPlayback()
             else:
@@ -72,6 +77,6 @@ class Bluetooth(object):
                     self.logger.info("Bluetooth device no longer connected")
                     self.stopPlayback()
                     self.coordinator.bluetoothPlaying(False)
-                
-            self.logger.debug("...waiting again for bluetooth event...")
-        
+                    self.device_connected = False        
+            self.logger.debug("...waiting again for bluetooth event or 5s timeout...")
+            
