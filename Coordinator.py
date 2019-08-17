@@ -9,6 +9,7 @@ from IR import IR
 import threading
 from enum import Enum
 import time
+from Bluetooth import Bluetooth
 
 class _RadioState(Enum):
     STOPPED = 0
@@ -26,6 +27,7 @@ class Coordinator(object):
         self.mqttClient = None
         self.gpioController = None
         self.mpdClient = None
+        self.bluetooth = None
         self.needle = None
         self.wheel = None
         self.logger = logger
@@ -36,6 +38,7 @@ class Coordinator(object):
         self.radioState = _RadioState.STOPPED
         self.busy = threading.Lock()
         self.poweredOn = False
+        self.bluetoothConnected = False
         self.currentVolume = 0
         
     def connectWifi(self):
@@ -57,6 +60,7 @@ class Coordinator(object):
         with self.busy:
             if self.poweredOn is False:
                 return
+            self.bluetooth.disable()
             self.wheel.disable()
             self.gpioController.disable_power_button()
             self._radioStop()
@@ -86,6 +90,7 @@ class Coordinator(object):
             self._radioStop()
             self.gpioController.enable_power_button()
             self._radioPlay()
+            self.bluetooth.enable()
             
     def initialize(self):
         self.gpioController.setStereoBlink(active=True, pause_s=0)
@@ -114,6 +119,10 @@ class Coordinator(object):
             self.needleStepsPerChannel = int((self.config.needle_steps-self.config.needle_left_margin)/self.numChannels)
             self.logger.debug("%i needleStepsPerChannel" % self.needleStepsPerChannel)
             
+        self.bluetooth = Bluetooth(self.config, self)
+        if self.bluetooth is not None:
+            self.bluetooth.initialize()
+            
         self.gpioController.enable_power_button()
         self.ir.enable()
         self.gpioController.setStereoBlink(active=True, pause_s=10)
@@ -128,9 +137,9 @@ class Coordinator(object):
             if not self.poweredOn:
                 return
             if self.currentChannel < (self.numChannels-1):
-                self.mpdClient.stop()
+                self._radioStop()
                 self.setNeedleForChannel(self.currentChannel+1) # this sets self.currentChannel!
-                self.mpdClient.playTitle(self.currentChannel)
+                self._radioPlay()
             else:
                 self.invalidChannel()
     
@@ -139,9 +148,9 @@ class Coordinator(object):
             if not self.poweredOn:
                 return
             if self.currentChannel > 0:
-                self.mpdClient.stop()
+                self._radioStop()
                 self.setNeedleForChannel(self.currentChannel-1) # this sets self.currentChannel!
-                self.mpdClient.playTitle(self.currentChannel)
+                self._radioPlay()
             else:
                 self.invalidChannel()
     
@@ -151,9 +160,9 @@ class Coordinator(object):
             if not self.poweredOn:
                 return
             if ch >= 0 and ch < self.numChannels:
-                self.mpdClient.stop()
+                self._radioStop()
                 self.setNeedleForChannel(ch)
-                self.mpdClient.playTitle(ch)
+                self._radioPlay()
             else:
                 self.invalidChannel()
                 
@@ -215,11 +224,32 @@ class Coordinator(object):
             self._radioPlay()
     
     def _radioPlay(self):
+        if self.bluetoothConnected is True:
+            self.logger.info("Not playing, bluetooth is active!")
+            return
         self.gpioController.setNeedlelight(PowerState.ON)
         self.mpdClient.playTitle(self.currentChannel)
     
     def isPoweredOn(self):
         return self.poweredOn
+    
+    def bluetoothPlaying(self, active):
+        self.logger.info("Coordinator.bluetoothPlaying called with active = '%i'" % active)
+        with self.busy:
+            if not self.poweredOn:
+                return
+            if active is True:
+                self._radioStop()
+                self.gpioController.setBacklight(PowerState.OFF)
+                self.gpioController.setBacklight(PowerState.ON)
+                self.gpioController.setStereoBlink(active=True, pause_s=1)
+            else:
+                self.gpioController.setBacklight(PowerState.OFF)
+                self.gpioController.setBacklight(PowerState.ON)
+                self.gpioController.setStereolight(PowerState.OFF)
+                self._radioPlay()
+            
+            self.bluetoothConnected = active            
     
     def currentlyPlaying(self, state=None, channel = None, volume = None, currentSongInfo = None):
         if volume is not None:
@@ -247,4 +277,4 @@ class Coordinator(object):
                 self.mqttClient.publish_power_state(PowerState.ON)
             else:
                 self.mqttClient.publish_power_state(PowerState.OFF)
-            self.mqttClient.pubInfo(state, self.currentChannel+1, self.currentVolume, currentSongInfo, self.numChannels)  # human-readable channel
+            self.mqttClient.pubInfo(state, self.currentChannel+1, self.currentVolume, currentSongInfo, self.numChannels, self.bluetoothConnected)  # human-readable channel
