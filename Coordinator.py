@@ -112,6 +112,7 @@ class Coordinator(object):
             self.logger.warn("Could not connect to MPD. Disabled...");
             self.mpdClient = None
         else:
+            self.gpioController.setStereoBlink(active=True, pause_s=3)
             if self.mpdClient.loadRadioPlaylist():
                 self.numChannels = self.mpdClient.getNumTracksInPlaylist()
             self.logger.info("%i channels in radio playlist" % self.numChannels)

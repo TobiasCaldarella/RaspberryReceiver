@@ -147,15 +147,18 @@ class MpdClient(object):
     
     def loadRadioPlaylist(self):
         self.logger.debug("loading playlist '%s'" % (self.config.mpd_radio_playlist))
-        try:
-            with self.connection:
-                self.client.clear()
-                self.client.load(self.config.mpd_radio_playlist)
-                self.client.single(1)
-                return True
-        except:
-            self.logger.error("Error loading mpd playlist!") 
-            return False
+        i = 1
+        while i < 10:
+            try:
+                with self.connection:
+                    self.client.clear()
+                    self.client.load(self.config.mpd_radio_playlist)
+                    self.client.single(1)
+                    return True
+            except:
+                self.logger.error("Error loading mpd playlist, attempt %i/10" % i)
+                time.sleep(10)
+        return False
         
     def playTitle(self, title):
         self.coordinator.currentlyPlaying(False)
