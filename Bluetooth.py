@@ -27,8 +27,6 @@ class Bluetooth(object):
     
     def initialize(self):
         self.disable()
-        self.workerThread = threading.Thread(target=self._waitForEvent)
-        self.workerThread.start()
     
     def startPlayback(self):
         if self.playbackProcess is None:
@@ -49,17 +47,29 @@ class Bluetooth(object):
     def enable(self):
         self.logger.info("Enabling bluetooth")
         os.system("/usr/sbin/rfkill unblock bluetooth")
+        self.run = True
+        if self.workerThread is not None and self.workerThread.isAlive():
+            self.logger.error("Bluetooth monitor thread still/already running!")
+        else:
+            self.workerThread = threading.Thread(target=self._waitForEvent)
+            self.workerThread.start()
     
     def disable(self):
         self.logger.info("Disabling bluetooth")
         self.stopPlayback()
         os.system("/usr/sbin/rfkill block bluetooth")
+        self.run = False
+        if self.workerThread is not None:
+            self.workerThread.join(2)
+            if self.workerThread.isAlive():
+                self.logger.error("Could not stop bluetooth monitor thread!")
         
     def _waitForEvent(self):
-        prevNumEntries = 0
+        self.logger.info("Bluetooth monitor thread started")
+        prevNumEntries = -1
         while(self.run):
             #self.logger.debug("Waiting for bluetooth event or 5s timeout...")
-            for event in self.inotify.read(5000):
+            for event in self.inotify.read(1000):
                 pass
                 #self.logger.debug("got bluetooth event: '%s'" % event)
                 
@@ -83,4 +93,5 @@ class Bluetooth(object):
                     self.coordinator.bluetoothPlaying(False)
                     self.device_connected = False        
             #self.logger.debug("...waiting again for bluetooth event or 5s timeout...")
+        self.logger.info("Bluetooth monitor thread stopped")
             
