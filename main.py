@@ -24,10 +24,9 @@ GPIO.setmode(GPIO.BCM)
 
 if __name__ == '__main__':
     config = Configuration.Configuration()
+    loggingFormat = '%(asctime)s %(thread)d %(message)s'
+    logging.basicConfig(format=loggingFormat, filename=config.logfile, level=config.loglevel)
     logger = logging.getLogger()
-    logger.setLevel(config.loglevel)
-    handler = logging.FileHandler(filename=config.logfile)
-    logger.addHandler(handler)
     logger.debug("RaspberryReceiver version %s started." % (config.version))
     config.logger = logger
     

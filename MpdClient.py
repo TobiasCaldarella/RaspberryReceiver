@@ -161,10 +161,12 @@ class MpdClient(object):
         return False
         
     def playTitle(self, title):
+        self.logger.info("starting...")
         self.coordinator.currentlyPlaying(False)
         with self.connection:
             try:
                 self.client.send_play(title)
+                self.logger.info("...started!")
                 return True
             except:
                 self.logger.error("Caught exception in MpdClient.playTitle(): '%s'" % (sys.exc_info()[0]))
@@ -172,9 +174,11 @@ class MpdClient(object):
                 
         
     def stop(self):
+        self.logger.info("stopping...")
         with self.connection:
             try:
                 self.client.send_stop()
+                self.logger.info("...stopped!")
                 return True
             except:
                 self.logger.error("Caught exception in MpdClient.stop(): '%s'" % (sys.exc_info()[0]))
