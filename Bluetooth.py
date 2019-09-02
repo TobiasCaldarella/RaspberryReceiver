@@ -56,27 +56,31 @@ class Bluetooth(object):
         os.system("/usr/sbin/rfkill block bluetooth")
         
     def _waitForEvent(self):
+        prevNumEntries = 0
         while(self.run):
-            self.logger.debug("Waiting for bluetooth event or 5s timeout...")
+            #self.logger.debug("Waiting for bluetooth event or 5s timeout...")
             for event in self.inotify.read(5000):
                 pass
                 #self.logger.debug("got bluetooth event: '%s'" % event)
                 
             numEntries = len(os.listdir('/sys/class/bluetooth/'))
-            self.logger.debug("'%i' entries in /sys/class/bluetooth/" % numEntries)
+            if prevNumEntries != numEntries:
+                self.logger.debug("'%i' entries in /sys/class/bluetooth/, was %i before" % (numEntries, prevNumEntries))
+                prevNumEntries = numEntries
+                
             if numEntries > 1:
-                self.logger.debug("Bluetooth device connected")
+                #self.logger.debug("Bluetooth device connected")
                 if self.device_connected == False:
                     self.logger.info("New bluetooth device connected")
                     self.device_connected = True
                     self.coordinator.bluetoothPlaying(True)
                     self.startPlayback()
             else:
-                self.logger.debug("No bluetooth device connected")
+                #self.logger.debug("No bluetooth device connected")
                 if self.device_connected == True:
                     self.logger.info("Bluetooth device no longer connected")
                     self.stopPlayback()
                     self.coordinator.bluetoothPlaying(False)
                     self.device_connected = False        
-            self.logger.debug("...waiting again for bluetooth event or 5s timeout...")
+            #self.logger.debug("...waiting again for bluetooth event or 5s timeout...")
             
