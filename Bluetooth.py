@@ -22,7 +22,8 @@ class Bluetooth(object):
         self.wd = self.inotify.add_watch('/sys/class/bluetooth/hci0', mask)
         self.device_connected = False
         self.playbackProcess = None
-        self.run = True
+        self.run = False
+        self.workerThread = None
         coordinator.bluetooth = self
     
     def initialize(self):
@@ -43,6 +44,7 @@ class Bluetooth(object):
         else:
             self.logger.info("Killing bluealsa-aplay")
             self.playbackProcess.terminate()
+            self.playbackProcess = None
     
     def enable(self):
         self.logger.info("Enabling bluetooth")
@@ -57,12 +59,12 @@ class Bluetooth(object):
     def disable(self):
         self.logger.info("Disabling bluetooth")
         self.stopPlayback()
-        os.system("/usr/sbin/rfkill block bluetooth")
         self.run = False
         if self.workerThread is not None:
             self.workerThread.join(2)
             if self.workerThread.isAlive():
                 self.logger.error("Could not stop bluetooth monitor thread!")
+        os.system("/usr/sbin/rfkill block bluetooth")
         
     def _waitForEvent(self):
         self.logger.info("Bluetooth monitor thread started")

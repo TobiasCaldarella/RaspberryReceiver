@@ -136,6 +136,7 @@ class Coordinator(object):
     def channelUp(self):
         with self.busy:
             if not self.poweredOn:
+                self.logger.info("not powered on, not chaning channel")
                 return
             if self.currentChannel < (self.numChannels-1):
                 self._radioStop(False)
@@ -147,6 +148,7 @@ class Coordinator(object):
     def channelDown(self):
         with self.busy:
             if not self.poweredOn:
+                self.logger.info("not powered on, not chaning channel")
                 return
             if self.currentChannel > 0:
                 self._radioStop(False)
@@ -159,6 +161,7 @@ class Coordinator(object):
         ch-=1 # channel starts with 1 (human friendly numbering), mpd and neelde however start counting at 0
         with self.busy:
             if not self.poweredOn:
+                self.logger.info("not powered on, not setting channel")
                 return
             if ch >= 0 and ch < self.numChannels:
                 self._radioStop(False)
@@ -185,6 +188,7 @@ class Coordinator(object):
     def volumeUp(self):
         with self.busy:
             if not self.poweredOn:
+                self.logger.info("not powered on, not changing volume")
                 return
             vol = self.currentVolume
             vol+=10
@@ -195,6 +199,7 @@ class Coordinator(object):
     def volumeDown(self):
         with self.busy:
             if not self.poweredOn:
+                self.logger.info("not powered on, not changing volume")
                 return
             vol = self.currentVolume
             vol-=10
@@ -205,6 +210,7 @@ class Coordinator(object):
     def setVolume(self, vol):
         with self.busy:
             if not self.poweredOn:
+                self.logger.info("not powered on, not setting volume")
                 return
             if vol < 0 or vol > 100:
                 self.logger.warn("Received invalid volume: %i", vol)
