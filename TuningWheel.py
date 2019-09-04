@@ -50,7 +50,7 @@ class TuningWheel(object):
             self.logger.debug("wheel counterclockwise")
             if self.enabled:
                 if self.buttonModeActive:
-                    if self.buttonModeActive > 0:
+                    if self.buttonModeCounter > 0:
                         self.buttonModeCounter-=1
                 else:
                     self.coordinator.channelDown()
