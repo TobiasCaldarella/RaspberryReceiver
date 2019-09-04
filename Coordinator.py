@@ -128,8 +128,7 @@ class Coordinator(object):
         self.ir.enable()
         self.gpioController.setStereoBlink(active=True, pause_s=10)
         
-    def invalidChannel(self):
-        self.logger.info("Invalid channel requested")
+    def lightSignal(self):
         self.gpioController.setBacklight(PowerState.OFF)
         self.gpioController.setBacklight(PowerState.ON)
     
@@ -143,7 +142,8 @@ class Coordinator(object):
                 self.setNeedleForChannel(self.currentChannel+1) # this sets self.currentChannel!
                 self._radioPlay()
             else:
-                self.invalidChannel()
+                self.lightSignal()
+                self.logger.info("Invalid channel requested")
     
     def channelDown(self):
         with self.busy:
@@ -155,7 +155,8 @@ class Coordinator(object):
                 self.setNeedleForChannel(self.currentChannel-1) # this sets self.currentChannel!
                 self._radioPlay()
             else:
-                self.invalidChannel()
+                self.lightSignal()
+                self.logger.info("Invalid channel requested")
     
     def setChannel(self, ch):
         ch-=1 # channel starts with 1 (human friendly numbering), mpd and neelde however start counting at 0
@@ -168,7 +169,8 @@ class Coordinator(object):
                 self.setNeedleForChannel(ch)
                 self._radioPlay()
             else:
-                self.invalidChannel()
+                self.lightSignal()
+                self.logger.info("Invalid channel requested")
                 
     def setNeedleForChannel(self, ch):
         if self.needle is None:
