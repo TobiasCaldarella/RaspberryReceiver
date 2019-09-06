@@ -35,6 +35,7 @@ class MqttClient(object):
         client.message_callback_add(self.config.mqtt_base_topic + "/volume/set", self.on_volume_msg)
         client.message_callback_add(self.config.mqtt_base_topic + "/channel/set", self.on_channel_msg)
         client.message_callback_add(self.config.mqtt_base_topic + "/notify/set", self.on_notify_msg)
+        client.message_callback_add(self.config.mqtt_base_topic + "/brightness/set", self.on_brightness_msg)
         self.client = client
         self.coordinator = coordinator
         coordinator.mqttClient = self
@@ -183,6 +184,21 @@ class MqttClient(object):
             self.logger.warn("Invalid data over 'notify' topic received, must be a number in an utf-8 string")
         except UnicodeDecodeError:
             self.logger.warn("Invalid data over 'notify' topic received, must be a number in an utf-8 string")
+            
+    def on_brightness_msg(self, client, userdata, message):
+        if self.coordinator is None:
+            self.logger.warn("Received Message on 'brightness' topic but no callback is set")
+            return
+        try:
+            brightness = int(message.payload.decode("utf-8"))
+            if brightness < 0 or brightness > 100:
+                self.logger.warn("Invalid brightness received, must be between 0 and 100")
+                return
+            self.coordinator.setBrightness(brightness)
+        except ValueError:
+            self.logger.warn("Invalid data over 'brightness' topic received, must be a number in an utf-8 string")
+        except UnicodeDecodeError:
+            self.logger.warn("Invalid data over 'brightness' topic received, must be a number in an utf-8 string")
     
     def on_subscribe(self, client, userdata, mid, granted_qos):
         self.connectEvent.set()
