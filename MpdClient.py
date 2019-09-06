@@ -79,7 +79,8 @@ class MpdClientEventListener(object):
                         currentSongId = int(stat['song'])
                     if 'volume' in stat:
                         currentVolume = int(stat['volume'])
-                    self.coordinator.currentlyPlaying(playing, currentSongId, currentVolume, currentSongInfo)
+                    self.coordinator.currentlyPlaying(mpdPlaying=playing, channel=currentSongId, 
+                                                      volume=currentVolume, currentSongInfo=currentSongInfo)
                         
                 try:
                     self.config.logger.debug("waiting for next mpd player status update...")
@@ -162,7 +163,7 @@ class MpdClient(object):
         
     def playTitle(self, title):
         self.logger.info("starting...")
-        self.coordinator.currentlyPlaying(False)
+        self.coordinator.currentlyPlaying(mpdPlaying=False)
         with self.connection:
             try:
                 self.client.send_play(title)

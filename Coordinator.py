@@ -14,6 +14,7 @@ from Bluetooth import Bluetooth
 class _RadioState(Enum):
     STOPPED = 0
     PLAYING = 1
+    BLUETOOTH = 2
 
 class Coordinator(object):
     '''
@@ -38,7 +39,6 @@ class Coordinator(object):
         self.radioState = _RadioState.STOPPED
         self.busy = threading.Lock()
         self.poweredOn = False
-        self.bluetoothConnected = False
         self.currentVolume = 0
         
     def connectWifi(self):
@@ -61,7 +61,6 @@ class Coordinator(object):
             if self.poweredOn is False:
                 return
             self.bluetooth.disable()
-            self.bluetoothConnected = False
             self.wheel.disable()
             self.gpioController.disable_power_button()
             self._radioStop()
@@ -234,7 +233,7 @@ class Coordinator(object):
             self._radioPlay()
     
     def _radioPlay(self):
-        if self.bluetoothConnected is True:
+        if self.radioState is _RadioState.BLUETOOTH:
             self.logger.info("Not playing, bluetooth is active!")
             return
         self.gpioController.setNeedlelight(PowerState.ON)
@@ -250,7 +249,7 @@ class Coordinator(object):
                 return
             if active is True:
                 self._radioStop()
-                self.bluetoothConnected = True
+                self.radioState = _RadioState.BLUETOOTH
                 self.gpioController.setBacklight(PowerState.OFF)
                 self.gpioController.setBacklight(PowerState.ON)
                 self.gpioController.setStereoBlink(active=True, pause_s=1)
@@ -258,27 +257,22 @@ class Coordinator(object):
                 self.gpioController.setBacklight(PowerState.OFF)
                 self.gpioController.setBacklight(PowerState.ON)
                 self.gpioController.setStereolight(PowerState.OFF)
-                self.bluetoothConnected = False
+                self.radioState = _RadioState.STOPPED
                 self._radioPlay()            
     
-    def currentlyPlaying(self, state=None, channel = None, volume = None, currentSongInfo = None):
+    def currentlyPlaying(self, mpdPlaying=None, channel = None, volume = None, currentSongInfo = None):
         if volume is not None:
             self.currentVolume = volume
         
-        if state is not None:
-            if state is True:
+        if mpdPlaying is not None and self.radioState is not _RadioState.BLUETOOTH: # do not overwrite bluetooth if volume etc. was changed
+            if mpdPlaying is True:
                 self.radioState = _RadioState.PLAYING
                 self.gpioController.setStereolight(PowerState.ON)            
             else:
                 self.radioState = _RadioState.STOPPED
-                self.gpioController.setStereolight(PowerState.OFF)
-        else:
-            if self.radioState is _RadioState.PLAYING:
-                state = True
-            else:
-                state = False
+        state = self.radioState
         
-        if channel is not None and channel != self.currentChannel and state is True:
+        if channel is not None and channel != self.currentChannel and state is _RadioState.PLAYING:
             self.logger.warn("Unexpected channel change, adjusting needle and informing mqtt...")
             self.setNeedleForChannel(channel) # also sets self.currentChannel
             

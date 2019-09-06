@@ -11,6 +11,7 @@ from threading import Event
 from paho.mqtt.client import MQTT_ERR_SUCCESS
 import sys
 import json
+from Coordinator import _RadioState
 
 class MqttClient(object):
     '''
@@ -105,8 +106,10 @@ class MqttClient(object):
                     infoDict['title'] = "N/A" 
             
             # state is never none
-            if state is True:
-                infoDict['state'] = "Playing"
+            if state is _RadioState.PLAYING:
+                infoDict['state'] = "Playing_Radio"
+            elif state is _RadioState.BLUETOOTH:
+                infoDict['state'] = "Playing_Bluetooth"
             else:
                 infoDict['state'] = "Stopped"
             self.client.publish(self.config.mqtt_base_topic + "/info", payload=str(json.dumps(infoDict))) # output info as json string
