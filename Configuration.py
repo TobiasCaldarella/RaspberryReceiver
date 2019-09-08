@@ -51,3 +51,7 @@ class Configuration(object):
         self.needle_left_margin = 150
         self.needle_sleep_time = 0.002
         
+        # misc options
+        self.backlight_default_brightness = 100
+        self.stereo_default_brightness= 100
+        

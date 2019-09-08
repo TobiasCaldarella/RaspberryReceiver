@@ -49,14 +49,18 @@ class GpioController(object):
                 GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
             
         if self.gpio_backlight is not None:
-            self.backlightPwm = GPIO.PWM(self.gpio_backlight, 50)
+            self.backlightPwm = GPIO.PWM(self.gpio_backlight, 500)
             self.backlightPwm.start(0)
         if self.gpio_stereo is not None:
-            self.stereoPwm = GPIO.PWM(self.gpio_stereo, 50)
+            self.stereoPwm = GPIO.PWM(self.gpio_stereo, 500)
             self.stereoPwm.start(0)
         
         self.backlightState = PowerState.OFF
+        self.backlightIntensity = 0
+        self.backlightDefaultIntensity = config.backlight_default_brightness
         self.stereoLightState = PowerState.OFF
+        self.stereoLightIntensity = 0
+        self.stereoLightDefaultIntensity = config.stereo_default_brightness
         self.stereoBlink = False
         self.stereoBlinkPause_s = 10
         self.stereoWaitEvent = threading.Event()
@@ -96,29 +100,59 @@ class GpioController(object):
                     pwm.ChangeDutyCycle(dc)
                     time.sleep(0.05)
             pwm.ChangeDutyCycle(0)
+            
+    def dimmLightNew(self, pwm, current, target, steps=10):
+        if pwm is None:
+            return
+        if current == target:
+            return
         
-    def setBacklight(self, state: PowerState):
+        if steps > 0:
+            step = (target - current)/steps
+            while steps > 0:
+                current = current + step
+                pwm.ChangeDutyCycle(current)
+                time.sleep(0.05)
+                steps = steps - 1
+        pwm.ChangeDutyCycle(target)
+        
+    def setBacklight(self, state = None, intensity = None):
         if self.gpio_backlight is None:
             return
-        if state == self.backlightState:
-            return
+        if intensity is None:
+            if state is PowerState.ON:
+                intensity = self.backlightDefaultIntensity
+            else:
+                intensity = 0
+        if state is None:
+            state = self.backlightState
+        
+        if state is not PowerState.ON:
+            intensity = 0
+            
+        self.dimmLightNew(self.backlightPwm, self.backlightIntensity, intensity)
+        self.backlightIntensity = intensity
         self.backlightState = state
-        self.dimmLight(state, self.backlightPwm)
         
     def setStereolight(self, state: PowerState, blinking = False):
         if self.gpio_stereo is None:
             return
-        self.stereoBlink = blinking
-        if state == self.stereoLightState: # already transiting to the desired state? don't wait!
-            return
         with self.stereoLightLock:
-            if state == self.stereoLightState:
+            self.stereoBlink = blinking
+            if state == self.stereoLightState: # already transiting to the desired state? don't wait!
                 return
-            self.stereoLightState = state
-            if blinking is False:
-                self.dimmLight(state, self.stereoPwm, 0)
+            if state is PowerState.ON:
+                intensity = self.stereoLightDefaultIntensity
             else:
-                self.dimmLight(state, self.stereoPwm)
+                intensity = 0
+                
+            if blinking is False:
+                self.dimmLightNew(self.stereoPwm, self.stereoLightIntensity, intensity, 0) # 0steps
+            else:
+                self.dimmLightNew(self.stereoPwm, self.stereoLightIntensity, intensity) # default number of steps
+            
+            self.stereoLightState = state
+            self.stereoLightIntensity = intensity
         
     def do_stereoBlink(self):
         while True:

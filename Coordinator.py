@@ -128,8 +128,9 @@ class Coordinator(object):
         self.gpioController.setStereoBlink(active=True, pause_s=10)
         
     def lightSignal(self):
+        intensity = self.gpioController.backlightIntensity
         self.gpioController.setBacklight(PowerState.OFF)
-        self.gpioController.setBacklight(PowerState.ON)
+        self.gpioController.setBacklight(PowerState.ON, intensity)
     
     def channelUp(self):
         with self.busy:
@@ -270,6 +271,7 @@ class Coordinator(object):
                 self.gpioController.setStereolight(PowerState.ON)            
             else:
                 self.radioState = _RadioState.STOPPED
+                self.gpioController.setStereolight(PowerState.OFF) 
         state = self.radioState
         
         if channel is not None and channel != self.currentChannel and state is _RadioState.PLAYING:
@@ -281,7 +283,16 @@ class Coordinator(object):
                 self.mqttClient.publish_power_state(PowerState.ON)
             else:
                 self.mqttClient.publish_power_state(PowerState.OFF)
-            self.mqttClient.pubInfo(state, self.currentChannel+1, self.currentVolume, currentSongInfo, self.numChannels)  # human-readable channel
-            
+                
+            if self.gpioController is not None:
+                brightness = self.gpioController.backlightIntensity
+            else:
+                brightness = None
+                
+            self.mqttClient.pubInfo(state, self.currentChannel+1, self.currentVolume, currentSongInfo, self.numChannels, brightness)  # human-readable channel
+
     def setBrightness(self, brightness):
-        pass
+        if self.gpioController:
+            self.gpioController.setBacklight(intensity = brightness)
+        if self.mqttClient:
+            self.mqttClient.pubInfo(brightness=brightness)

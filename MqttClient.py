@@ -47,7 +47,7 @@ class MqttClient(object):
             if client.connect(self.config.mqtt_server, self.config.mqtt_port) is not MQTT_ERR_SUCCESS:
                 self.logger.warn("mqtt.connect() failed")
                 return False
-            for topic in { self.config.mqtt_base_topic + "/power/set", self.config.mqtt_base_topic + "/volume/set", self.config.mqtt_base_topic + "/channel/set"}:
+            for topic in { self.config.mqtt_base_topic + "/power/set", self.config.mqtt_base_topic + "/volume/set", self.config.mqtt_base_topic + "/channel/set", self.config.mqtt_base_topic + "/notify/set", self.config.mqtt_base_topic + "/brightness/set"}:
                 if client.subscribe(topic)[0] is not MQTT_ERR_SUCCESS:
                     self.logger.warn("mqtt subscription to topic '%s' failed." % topic)
                     return False
@@ -83,7 +83,7 @@ class MqttClient(object):
             return False
             
     
-    def pubInfo(self, state, channel, volume, currentSongInfo, numChannelsInPlaylist):
+    def pubInfo(self, state = None, channel = None, volume = None, currentSongInfo = None, numChannelsInPlaylist = None, brightness = None):
         try:
             self.logger.debug("Publishing status update")
             
@@ -104,13 +104,18 @@ class MqttClient(object):
                 else:
                     infoDict['title'] = "N/A" 
             
-            # state is never none
-            if state is _RadioState.PLAYING:
-                infoDict['state'] = "Playing_Radio"
-            elif state is _RadioState.BLUETOOTH:
-                infoDict['state'] = "Playing_Bluetooth"
-            else:
-                infoDict['state'] = "Stopped"
+            if brightness is not None:
+                infoDict['brightness'] = brightness
+            
+            if state is not None:
+                if state is _RadioState.PLAYING:
+                    infoDict['state'] = "Playing_Radio"
+                elif state is _RadioState.BLUETOOTH:
+                    infoDict['state'] = "Playing_Bluetooth"
+                else:
+                    infoDict['state'] = "Stopped"
+            
+            infoDict['notify'] = 0 # always0 for now, required to workaround bug in openHAB
             self.client.publish(self.config.mqtt_base_topic + "/info", payload=str(json.dumps(infoDict))) # output info as json string
         except:
             self.logger.error("Caught exception in MqttClient.pubInfo(): '%s'" % (sys.exc_info()[0]))
