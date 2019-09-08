@@ -281,7 +281,7 @@ class Coordinator(object):
                 self.mqttClient.publish_power_state(PowerState.ON)
             else:
                 self.mqttClient.publish_power_state(PowerState.OFF)
-            self.mqttClient.pubInfo(state, self.currentChannel+1, self.currentVolume, currentSongInfo, self.numChannels, self.bluetoothConnected)  # human-readable channel
+            self.mqttClient.pubInfo(state, self.currentChannel+1, self.currentVolume, currentSongInfo, self.numChannels)  # human-readable channel
             
     def setBrightness(self, brightness):
         pass
