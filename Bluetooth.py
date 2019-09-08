@@ -32,6 +32,7 @@ class Bluetooth(object):
     def startPlayback(self):
         if self.playbackProcess is None:
             try:
+                self.logger.info("Starting bluealsa-aplay")
                 self.playbackProcess = subprocess.Popen(["/usr/bin/bluealsa-aplay", "--profile-a2dp", "00:00:00:00:00:00"])
             except:
                 self.logger.error("Could not start bluealsa-aplay")
