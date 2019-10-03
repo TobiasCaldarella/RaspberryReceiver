@@ -12,7 +12,7 @@ class Configuration(object):
 
     def __init__(self):
         # Logging
-        self.logfile = '/tmp/raspberryReceiver.log'
+        self.logfile = '/var/log/raspberryReceiver.log'
         self.loglevel = 'DEBUG'
         self.logger = None
         
