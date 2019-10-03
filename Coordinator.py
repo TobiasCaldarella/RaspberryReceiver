@@ -147,7 +147,10 @@ class Coordinator(object):
         
     def lightSignal(self):
         intensity = self.gpioController.backlightIntensity
-        self.gpioController.setBacklight(PowerState.OFF)
+        if intensity == 0:
+            self.gpioController.setBacklight(PowerState.ON, self.config.backlight_default_brightness)
+        else:
+            self.gpioController.setBacklight(PowerState.OFF)
         self.gpioController.setBacklight(PowerState.ON, intensity)
     
     def channelUp(self):
