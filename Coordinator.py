@@ -105,6 +105,9 @@ class Coordinator(object):
             if time_m > 0:
                 self.logger.info("Sleep set to %i minutes" % time_m)
                 self.sleepTimer = threading.Timer(time_m * 60, self.powerOff)
+                self.setBrightness(self.config.backlight_sleep_brightness)
+            else:
+                self.setBrightness(self.config.backlight_default_brightness)
             
     def initialize(self):
         self.gpioController.setStereoBlink(active=True, pause_s=0)
