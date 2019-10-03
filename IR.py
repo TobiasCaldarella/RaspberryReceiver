@@ -148,10 +148,10 @@ class IR(object):
                 self.logger.debug("LIRC: 'mute'")
                 with self.twoDigitLock:
                     self.cancel_two_digit_input()
+                    self.coordinator.sleep(0) # cancel old sleep
                     self.twoDigitHandler = self.coordinator.sleep
                     self.two_digit_timeout = threading.Timer(10.0, self.do_two_digit_timeout)
                     self.two_digit_timeout.start()
-                    self.coordinator.lightSignal()
                     continue
             else:
                 self.logger.warn("Received unknown command from LIRC: '%s'" % code)

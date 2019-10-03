@@ -101,6 +101,7 @@ class Coordinator(object):
         with self.busy:
             if self.sleepTimer:
                 self.sleepTimer.cancel()
+            self.lightSignal()
             
             if time_m > 0:
                 self.logger.info("Sleep set to %i minutes" % time_m)
