@@ -107,6 +107,7 @@ class Coordinator(object):
                 self.sleepTimer = threading.Timer(time_m * 60, self.powerOff)
                 self.setBrightness(self.config.backlight_sleep_brightness)
             else:
+                self.logger.info("Sleep cancelled")
                 self.setBrightness(self.config.backlight_default_brightness)
             
     def initialize(self):

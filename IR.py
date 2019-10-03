@@ -56,6 +56,9 @@ class IR(object):
                 self.logger.debug("Two digit input timed out. Assuming %i" % self.firstDigit)
                 ch = self.firstDigit
                 self.finish_two_digit_input(ch)
+            else:
+                self.logger.debug("Two digit input timed out w/o input. Cancelled")
+                self.cancel_two_digit_input()
                 
     def cancel_two_digit_input(self):
         self.logger.debug("Two digit input cancelled")
