@@ -21,14 +21,26 @@ class IR(object):
         self.sockid = lirc.init('RaspberryRadio', 'resources/lircrc')
         self.workerThread = threading.Thread(target=self.do_getCode)
         self.logger.debug("IR initialized")
-        self.run = True
         self.enabled = False
         self.firstDigit = None
+        self.two_digit_timeout = None
+        self.sleep_timeout = None
         self.twoDigitLock = threading.Lock()
+        self.twoDigitHandler = self.coordinator.setChannel
        
     def connect(self):
         self.logger.debug("IR connecting...")
+        self.run = True
         self.workerThread.start()
+        
+    def disconnect(self):
+        self.logger.debug("IR disconnecting...")
+        self.run = False
+        lirc.deinit()
+        if self.workerThread.join(timeout=10):
+            self.logger.info("IR disconnected and stopped")
+        else:
+            self.logger.error("Error disconnecting IR!")
         
     def enable(self):
         self.logger.debug("IR enabled")
@@ -43,13 +55,26 @@ class IR(object):
             if self.firstDigit is not None:
                 self.logger.debug("Two digit input timed out. Assuming %i" % self.firstDigit)
                 ch = self.firstDigit
-                self.firstDigit = None
-                self.coordinator.setChannel(ch)
+                self.finish_two_digit_input(ch)
+                
+    def cancel_two_digit_input(self):
+        self.logger.debug("Two digit input cancelled")
+        if self.two_digit_timeout:
+            self.two_digit_timeout.cancel()
+        self.firstDigit = None
+        self.twoDigitHandler = self.coordinator.setChannel
+    
+    def finish_two_digit_input(self, input):
+        self.logger.debug("Two digit input finished: '%i'" % input)
+        self.firstDigit = None
+        if self.two_digit_timeout:
+            self.two_digit_timeout.cancel()
+        self.twoDigitHandler(input)
+        self.twoDigitHandler = self.coordinator.setChannel
     
     def do_getCode(self):
         coordinator = self.coordinator
         self.logger.debug("...IR connected")
-        two_digit_timeout = None
         while self.run is True:
             code = lirc.nextcode()
             if self.enabled is not True:
@@ -112,12 +137,19 @@ class IR(object):
             elif "ok" in code:
                 self.logger.debug("LIRC: 'ok'")
                 with self.twoDigitLock:
-                    if self.firstDigit is None:
-                        continue
-                    # cancel timeout and change immediately with one digit
-                    two_digit_timeout.cancel()
-                    
-                self.do_two_digit_timeout()   
+                    self.finish_two_digit_input(self.firstDigit)
+            elif "esc" in code:
+                self.logger.debug("LIRC: 'esc'")
+                pass
+            elif "mute" in code:
+                self.logger.debug("LIRC: 'mute'")
+                with self.twoDigitLock:
+                    self.cancel_two_digit_input()
+                    self.twoDigitHandler = self.coordinator.sleep
+                    self.two_digit_timeout = threading.Timer(10.0, self.do_two_digit_timeout)
+                    self.two_digit_timeout.start()
+                    self.coordinator.lightSignal()
+                    continue
             else:
                 self.logger.warn("Received unknown command from LIRC: '%s'" % code)
                 continue
@@ -127,16 +159,13 @@ class IR(object):
                     if self.firstDigit is None:
                         self.logger.debug("LIRC: first digit: %i" % digit)
                         self.firstDigit = digit
-                        two_digit_timeout = threading.Timer(2.0, self.do_two_digit_timeout)
-                        two_digit_timeout.start()
+                        self.two_digit_timeout = threading.Timer(2.0, self.do_two_digit_timeout)
+                        self.two_digit_timeout.start()
                     else:
-                        two_digit_timeout.cancel()
+                        self.two_digit_timeout.cancel()
                         digit+=(self.firstDigit*10)
                         self.logger.debug("LIRC: two digit value: %i" % digit)
-                        self.firstDigit = None
-                        self.coordinator.setChannel(digit)
+                        self.finish_two_digit_input(digit)
                 else:
-                    if two_digit_timeout is not None:
-                        two_digit_timeout.cancel()
-                    self.firstDigit = None
+                    self.cancel_two_digit_input()
             

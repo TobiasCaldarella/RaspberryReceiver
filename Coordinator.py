@@ -40,6 +40,7 @@ class Coordinator(object):
         self.busy = threading.Lock()
         self.poweredOn = False
         self.currentVolume = 0
+        self.sleepTimer = None
         
     def connectWifi(self):
         self.gpioController.setStereoBlink(active=True, pause_s=2)
@@ -58,6 +59,8 @@ class Coordinator(object):
 
     def powerOff(self):
         with self.busy:
+            if self.sleepTimer:
+                self.sleepTimer.cancel()
             if self.poweredOn is False:
                 return
             self.bluetooth.disable()
@@ -76,6 +79,8 @@ class Coordinator(object):
     
     def powerOn(self):
         with self.busy:
+            if self.sleepTimer:
+                self.sleepTimer.cancel()
             if self.poweredOn is True:
                 return
             self.poweredOn = True
@@ -91,6 +96,15 @@ class Coordinator(object):
             self.gpioController.enable_power_button()
             self._radioPlay()
             self.bluetooth.enable()
+            
+    def sleep(self, time_m):
+        with self.busy:
+            if self.sleepTimer:
+                self.sleepTimer.cancel()
+            
+            if time_m > 0:
+                self.logger.info("Sleep set to %i minutes" % time_m)
+                self.sleepTimer = threading.Timer(time_m * 60, self.powerOff)
             
     def initialize(self):
         self.gpioController.setStereoBlink(active=True, pause_s=0)

@@ -78,4 +78,14 @@ begin
   prog = RaspberryRadio
   config = ok
 end
+begin
+  button = KEY_ESC
+  prog = RaspberryRadio
+  config = esc
+end
+begin
+  button = KEY_MUTE
+  prog = RaspberryRadio
+  config = mute
+end
 
