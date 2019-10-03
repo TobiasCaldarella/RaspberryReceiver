@@ -106,6 +106,7 @@ class Coordinator(object):
             if time_m > 0:
                 self.logger.info("Sleep set to %i minutes" % time_m)
                 self.sleepTimer = threading.Timer(time_m * 60, self.powerOff)
+                self.sleepTimer.start()
                 self.setBrightness(self.config.backlight_sleep_brightness)
             else:
                 self.logger.info("Sleep cancelled")
