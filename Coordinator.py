@@ -93,6 +93,7 @@ class Coordinator(object):
                 self.mqttClient.publish_power_state(PowerState.ON)
             self.wheel.enable()
             self._radioStop()
+            self.radioState = _RadioState.STOPPED
             self.gpioController.enable_power_button()
             self._radioPlay()
             self.bluetooth.enable()
