@@ -91,6 +91,7 @@ class TuningWheel(object):
     
     def enable(self):
         self.logger.debug("Wheel enabled")
+        self.buttonModeActive = False
         self.enabled = True
         
     def disable(self):
