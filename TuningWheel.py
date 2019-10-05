@@ -38,6 +38,7 @@ class TuningWheel(object):
         self.buttonModeActive = False
         self.buttonModeTimer = None
         self.buttonModeCounter = 0
+        self.enableTimer = None
     
         GPIO.add_event_detect(self.gpio_right_sensor, GPIO.FALLING, self.do_right_sensor, bouncetime=40)
         GPIO.add_event_detect(self.gpio_left_sensor, GPIO.FALLING, self.do_left_sensor, bouncetime=40)
@@ -88,12 +89,24 @@ class TuningWheel(object):
             
     def do_button_timeout(self):
         self.buttonModeActive = False
-    
-    def enable(self):
-        self.logger.debug("Wheel enabled")
-        self.buttonModeActive = False
+        
+    def do_enable(self):
         self.enabled = True
+        self.logger.debug("Wheel enabled")
+        
+    def enable(self):
+        if self.enabled == True:
+            self.logger.warn("Wheel already enabled!")
+            return
+        self.logger.debug("Wheel enabling...")
+        self.buttonModeActive = False
+        if self.enableTimer:
+            self.enableTimer.cancel()
+        self.enableTimer = threading.Timer(0.5, self.do_enable)
+        self.enableTimer.start()
         
     def disable(self):
         self.logger.debug("Wheel disabled")
+        if self.enableTimer:
+            self.enableTimer.cancel()
         self.enabled = False

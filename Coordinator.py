@@ -91,12 +91,12 @@ class Coordinator(object):
             self.gpioController.setPowerAndSpeaker(PowerState.ON)
             if self.mqttClient is not None:
                 self.mqttClient.publish_power_state(PowerState.ON)
-            self.wheel.enable()
             self._radioStop()
             self.radioState = _RadioState.STOPPED
             self.gpioController.enable_power_button()
             self._radioPlay()
             self.bluetooth.enable()
+            self.wheel.enable()
             
     def sleep(self, time_m):
         with self.busy:

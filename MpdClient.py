@@ -164,6 +164,7 @@ class MpdClient(object):
     def playTitle(self, title):
         self.logger.info("starting...")
         self.coordinator.currentlyPlaying(mpdPlaying=False)
+        # this sometimes hangs... offload to worker thread via queue?
         with self.connection:
             try:
                 self.client.send_play(title)
