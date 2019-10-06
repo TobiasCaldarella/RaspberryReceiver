@@ -57,14 +57,16 @@ class Bluetooth(object):
             self.workerThread = threading.Thread(target=self._waitForEvent)
             self.workerThread.start()
     
-    def disable(self):
+    def disable(self, wait_for_stop=True):
+        ''' if wait for stop = False, wait for radioState in coordinator to become stopped! '''
         self.logger.info("Disabling bluetooth")
         self.stopPlayback()
         self.run = False
         if self.workerThread is not None:
-            self.workerThread.join(2)
-            if self.workerThread.isAlive():
-                self.logger.error("Could not stop bluetooth monitor thread!")
+            if wait_for_stop:
+                self.workerThread.join(2)
+                if self.workerThread.isAlive():
+                    self.logger.error("Could not stop bluetooth monitor thread!")
         os.system("/usr/sbin/rfkill block bluetooth")
         
     def _waitForEvent(self):
@@ -96,5 +98,6 @@ class Bluetooth(object):
                     self.coordinator.bluetoothPlaying(False)
                     self.device_connected = False        
             #self.logger.debug("...waiting again for bluetooth event or 5s timeout...")
+        self.coordinator.bluetoothPlaying(False) # this means we received a bluetooth.disable() call, we are not playing anymore
         self.logger.info("Bluetooth monitor thread stopped")
             
