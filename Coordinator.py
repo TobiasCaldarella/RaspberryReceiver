@@ -50,11 +50,11 @@ class Coordinator(object):
         if self.mqttClient is None:
             return False
         self.gpioController.setStereoBlink(active=True, pause_s=1)
-        if self.mqttClient.connect() is not True:
-            return False
-        if self.mqttClient.waitForSubscription() is not True:
-            return False
-        self.gpioController.setStereolight(PowerState.OFF)
+        if self.mqttClient.connect() is True and self.mqttClient.waitForSubscription() is True:
+            self.gpioController.setStereolight(PowerState.OFF)
+            return True
+        self.logger.warn("Connection to mqtt failed, will retry immediately")
+        self.mqttClient.reconnect()
         return True
 
     def powerOff(self):

@@ -22,6 +22,7 @@ class Configuration(object):
         self.mqtt_user = 'zigbee'
         self.mqtt_pass = 'zigbee'
         self.mqtt_base_topic = 'nikko7070'
+        self.mqtt_reconnect_period_s = 30
         
         # GPIOs light
         self.gpio_power = 4

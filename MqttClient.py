@@ -12,6 +12,7 @@ from paho.mqtt.client import MQTT_ERR_SUCCESS
 import sys
 import json
 from Coordinator import _RadioState
+import threading
 
 class MqttClient(object):
     '''
@@ -40,22 +41,34 @@ class MqttClient(object):
         self.coordinator = coordinator
         coordinator.mqttClient = self
         self.connectEvent = Event()
+        self.retry_timer = None
         
-    def connect(self):
+    def connect(self): 
+        client = self.client
+        client.loop_start()
         try:
-            client = self.client
             if client.connect(self.config.mqtt_server, self.config.mqtt_port) is not MQTT_ERR_SUCCESS:
                 self.logger.warn("mqtt.connect() failed")
                 return False
-            for topic in { self.config.mqtt_base_topic + "/power/set", self.config.mqtt_base_topic + "/volume/set", self.config.mqtt_base_topic + "/channel/set", self.config.mqtt_base_topic + "/notify/set", self.config.mqtt_base_topic + "/brightness/set"}:
-                if client.subscribe(topic)[0] is not MQTT_ERR_SUCCESS:
-                    self.logger.warn("mqtt subscription to topic '%s' failed." % topic)
-                    return False
-            client.loop_start()
             return True
         except:
             self.logger.error("Caught exception in MqttClient.connect(): '%s'" % (sys.exc_info()[0]))
             return False
+        
+    def reconnect(self):
+        self.logger.info("mqtt reconnecting...")        
+        try:
+            if self.client.reconnect() is MQTT_ERR_SUCCESS:
+                return True
+            else:
+                self.logger.warn("mqtt.reconnect() failed")
+        except:
+            self.logger.error("Caught exception in MqttClient.reconnect(): '%s'" % (sys.exc_info()[0]))
+        self.logger.warn("will retry in %i seconds" % self.config.mqtt_reconnect_period_s)
+        if self.retry_timer is not None:
+            self.retry_timer.cancel()
+        self.retry_timer = threading.Timer(self.config.mqtt_reconnect_period_s, self.reconnect)
+        self.retry_timer.start()
         
     def disconnect(self):
         try:
@@ -204,11 +217,15 @@ class MqttClient(object):
             self.logger.warn("Invalid data over 'brightness' topic received, must be a number in an utf-8 string")
     
     def on_subscribe(self, client, userdata, mid, granted_qos):
-        self.connectEvent.set()
+        pass
     
     def on_connect(self, client, userdata, flags, rc):
-        pass
+        self.logger.info("MQTT connecton established")
+        for topic in { self.config.mqtt_base_topic + "/power/set", self.config.mqtt_base_topic + "/volume/set", self.config.mqtt_base_topic + "/channel/set", self.config.mqtt_base_topic + "/notify/set", self.config.mqtt_base_topic + "/brightness/set"}:
+            if client.subscribe(topic)[0] is not MQTT_ERR_SUCCESS:
+                self.logger.warn("mqtt subscription to topic '%s' failed." % topic)
+        self.connectEvent.set()
         
     def on_disconnect(self, client, userdata, rc):
+        self.logger.warn("MQTT connection lost!")
         self.connectEvent.clear()
-    
