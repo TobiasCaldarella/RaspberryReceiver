@@ -9,22 +9,41 @@ import sys
 import threading
 import time
 import json
+import queue
 
-class _connection:
+class _Connection:
     def __init__(self, parent):
         self.parent = parent
+        self.logger = parent.config.logger
+        self.client = parent.client
     def __enter__(self):
         try:
-            self.parent.client.ping()
+            self.client.ping()
         except:
             try:
-                self.parent.disconnect()
+                self.disconnect()
             except:
                 pass
-            self.parent.connect()
+            self.connect()
     def __exit__(self, type, value, traceback):
         pass
-
+    
+    def connect(self):
+        try:
+            self.client.connect("127.0.0.1", 6600)
+            return True
+        except:
+            self.logger.error("Caught exception in MpdClient.connct(): '%s'" % (sys.exc_info()[0]))
+            return False
+            
+    def disconnect(self):
+        try:
+            self.client.disconnect()
+            return True
+        except:
+            self.logger.warn("Exception during MpdClient.disconnect(): '%s'" % (sys.exc_info()[0])) 
+            return False
+        
 class MpdClientEventListener(object):
     def __init__(self, config, coordinator):
         self.config = config
@@ -48,6 +67,8 @@ class MpdClientEventListener(object):
             self.client.disconnect()
         except:
             self.config.logger.warn("Exception during MpdClientEventListener.disconnect(): '%s'" % (sys.exc_info()[0])) 
+            
+        # todo :stop thread
             
     def do_listen(self):
         while self.listen is True:
@@ -110,32 +131,24 @@ class MpdClient(object):
         self.client = client
         self.config = config
         self.logger = config.logger
-        self.connection = _connection(self)
+        self.connection = _Connection(self)
         self.coordinator = coordinator
         if coordinator is not None:
             coordinator.mpdClient = self
         self.listener = MpdClientEventListener(config, coordinator)
         self.listener.startListener()
+        self.queue = queue.Queue(10)
+        self.queueHandlerThread = None
         
     def connect(self):
-        try:
-            self.client.connect("127.0.0.1", 6600)
-            return True
-        except:
-            self.logger.error("Caught exception in MpdClient.connct(): '%s'" % (sys.exc_info()[0]))
-            return False
+        self._startQueueHandler()
+        return self.connection.connect()
     
     def disconnect(self):
-        #try:
-        #    self.client.close()
-        #except:
-        #    self.config.logger.warn("Exception during MpdClient.close(): '%s'" % (sys.exc_info()[0])) 
-        try:
-            self.client.disconnect()
-            return True
-        except:
-            self.logger.warn("Exception during MpdClient.disconnect(): '%s'" % (sys.exc_info()[0])) 
-            return False
+        self._stopQueueHandler()
+        self.listener.disconnect()
+        self._stopQueueHandler()
+        return self.connection.disconnect()
     
     def getNumTracksInPlaylist(self):
         with self.connection:
@@ -160,22 +173,77 @@ class MpdClient(object):
                 self.logger.error("Error loading mpd playlist, attempt %i/10" % i)
                 time.sleep(10)
         return False
+    
+    def _stopQueueHandler(self):
+        if self.queueHandlerThread is None:
+            return True
+        try:
+            self.queue.put(item=None, block=True, timeout=10)
+        except:
+            self.logger.error("Error putting stop-job into queue. Queue maybe stuck")
+            return False
+        # todo: join queue handler thread
+        self.queueHandlerThread.join(10)
+        if self.queueHandlerThread.is_alive():
+            self.logger.error("Queue handler thread did not stop! Queue stuck!!")
+        self.queueHandlerThread = None
+            
+    def _startQueueHandler(self):
+        if self.queueHandlerThread is not None:
+            self.logger.error("Queue handler already active!")
+            return False
+        self.queueHandlerThread = threading.Thread(target=self._queueHandlerFct)
+        self.queueHandlerThread.start()
         
+    def _queueHandlerFct(self):
+        ''' to stop queue handler, put an empty message in the queue '''
+        self.logger.debug("Queue handler started...")
+        while True:
+            queue_item = self.queue.get(block=True, timeout=None)
+            if queue_item is None:
+                return
+            self.logger.debug("Running job from queue...")
+            queue_item()
+        self.logger.debug("Queue handler stopped")
+    
     def playTitle(self, title):
-        self.logger.info("starting...")
-        self.coordinator.currentlyPlaying(mpdPlaying=False)
-        # this sometimes hangs... offload to worker thread via queue?
+        self.logger.info("putting playTitle(%s) into queue..." % title)
+        try:
+            self.queue.put(item= lambda: self._playTitle(title), block = True, timeout=0.5)
+            return True
+        except:
+            self.logger.error("Error putting job into queue!")
+            return False
+    
+    def stop(self):
+        self.logger.info("putting stop() into queue...")
+        try:
+            self.queue.put(item= lambda: self._stop(), block = True, timeout=0.5)
+            return True
+        except:
+            self.logger.error("Error putting job into queue!")
+            return False            
+    
+    def setVolume(self, vol):
+        self.logger.info("putting setVolume(%i) into queue..." % vol)
+        try:
+            self.queue.put(item= lambda: self._setVolume(vol), block = True, timeout=0.5)
+            return True
+        except:
+            self.logger.error("Error putting job into queue!")
+            return False                
+            
+    def _setVolume(self, vol):
+        self.logger.info("setting volume to %i" % vol)
         with self.connection:
             try:
-                self.client.send_play(title)
-                self.logger.info("...started!")
+                self.client.send_setvol(vol)
                 return True
             except:
-                self.logger.error("Caught exception in MpdClient.playTitle(): '%s'" % (sys.exc_info()[0]))
+                self.logger.error("Caught exception in MpdClient.setVolume(): '%s'" % (sys.exc_info()[0]))
                 return False
-                
-        
-    def stop(self):
+            
+    def _stop(self):
         self.logger.info("stopping...")
         with self.connection:
             try:
@@ -185,13 +253,16 @@ class MpdClient(object):
             except:
                 self.logger.error("Caught exception in MpdClient.stop(): '%s'" % (sys.exc_info()[0]))
                 return False
-            #self.coordinator.currentlyPlaying(False)
-            
-    def setVolume(self, vol):
+    
+    def _playTitle(self, title):
+        self.logger.info("starting...")
+        self.coordinator.currentlyPlaying(mpdPlaying=False)
         with self.connection:
             try:
-                self.client.send_setvol(vol)
+                self.client.send_play(title)
+                self.logger.info("...started!")
                 return True
             except:
-                self.logger.error("Caught exception in MpdClient.setVolume(): '%s'" % (sys.exc_info()[0]))
+                self.logger.error("Caught exception in MpdClient.playTitle(): '%s'" % (sys.exc_info()[0]))
                 return False
+            

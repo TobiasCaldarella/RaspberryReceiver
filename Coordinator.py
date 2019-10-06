@@ -305,7 +305,6 @@ class Coordinator(object):
             self.playStateCnd.notify_all()           
     
     def currentlyPlaying(self, mpdPlaying=None, channel = None, volume = None, currentSongInfo = None):
-        # todo: set condition variable to wait for updates, especially on playing state and check with double check anti pattern
         self.logger.debug("updating playing-state...")
         with self.playStateCnd:
             if volume is not None:
