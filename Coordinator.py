@@ -58,6 +58,7 @@ class Coordinator(object):
         return True
 
     def powerOff(self):
+        self.logger.info("Power down requested...")
         with self.playStateCnd:
             if self.sleepTimer:
                 self.sleepTimer.cancel()
@@ -67,8 +68,8 @@ class Coordinator(object):
             self.wheel.disable()
             self.gpioController.disable_power_button()
             self._radioStop()
-            self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd) # bluetooth and radio are stopped, wait for play state to become stopped
             self.poweredOn = False
+            self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd) # bluetooth and radio are stopped, wait for play state to become stopped
             self.logger.info("Powering down...")
             self.gpioController.setStereolight(PowerState.OFF)
             self.gpioController.setBacklight(PowerState.OFF)
@@ -79,6 +80,7 @@ class Coordinator(object):
             self.gpioController.enable_power_button()
     
     def powerOn(self):
+        self.logger.info("Power up requested...")
         with self.playStateCnd:
             if self.sleepTimer:
                 self.sleepTimer.cancel()
@@ -253,6 +255,11 @@ class Coordinator(object):
             self._radioStop()
             if waitForStop:
                 self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
+                
+    def radioRestart(self):
+        with self.playStateCnd:
+            self._radioPause()
+            self._radioPlay()
     
     def _radioStop(self, needleLightOff=True):
         self.mpdClient.stop()
@@ -263,9 +270,19 @@ class Coordinator(object):
         with self.playStateCnd:
             self._radioPlay()
     
+    def _radioPause(self):
+        if not self.poweredOn:
+            self.logger.error("Cannot send pause if not powered up")
+            return
+        self.gpioController.setNeedlelight(PowerState.OFF)
+        self.mpdClient.pause()
+    
     def _radioPlay(self):
         if self.radioState is _RadioState.BLUETOOTH:
             self.logger.info("Not playing, bluetooth is active!")
+            return
+        if not self.poweredOn:
+            self.logger.error("Cannot start play if not powered up")
             return
         self.gpioController.setNeedlelight(PowerState.ON)
         self.mpdClient.playTitle(self.currentChannel)
@@ -275,21 +292,25 @@ class Coordinator(object):
     
     def waitForRadioState(self, desiredState, lock=None):
         if lock is None:
-            lock = self.playStateCnd
+            self.logger.error("Need a lock!!")
+            return False
+        
+        self.logger.debug("radioState is '%s'" % desiredState)
         while self.radioState != desiredState:
             self.logger.debug("waiting for radioState to become '%s'..." % desiredState)
             if self.playStateCnd.wait(timeout=10) is False:
                 self.logger.warn("timeout while waiting for state update!")
                 return False
-        self.logger.debug("radioState is '%s'" % desiredState)
+            self.logger.debug("radioState is '%s'" % desiredState)
         return True
     
     def bluetoothPlaying(self, active):
         self.logger.info("Coordinator.bluetoothPlaying called with active = '%i'" % active)
         with self.playStateCnd:
-            if not self.poweredOn:
-                return
             if active is True and self.radioState is not _RadioState.BLUETOOTH:
+                if not self.poweredOn:
+                    self.logger.error("Cannot enable bluetooth if not if not powered up!")
+                    return
                 self._radioStop()
                 self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
                 self.radioState = _RadioState.BLUETOOTH # bluetooth state won't be overwritten by status updates

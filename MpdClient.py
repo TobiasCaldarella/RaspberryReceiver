@@ -10,6 +10,7 @@ import threading
 import time
 import json
 import queue
+from time import sleep
 
 class _Connection:
     def __init__(self, parent):
@@ -77,12 +78,19 @@ class MpdClientEventListener(object):
                 stat = self.client.status()
                 playing = False
                 currentSongInfo = None
-                while ('state' in stat) and (stat['state'] == 'play'):
+                alreadyRestarted = False
+                while ('state' in stat) and (stat['state'] == 'play') and 'error' not in stat:
                     # mpd wants to play but maybe waits for stream to start, we have to poll
                     if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed']) > 0):
                         # currently streaming
                         currentSongInfo = self.client.currentsong()
                         self.config.logger.info("MPD playing %s" % json.dumps(currentSongInfo))
+                        self.config.logger.debug("MPD playing %s" % json.dumps(stat))
+                        if alreadyRestarted is False and ('volume' not in stat or int(stat['volume']) is None):
+                            self.config.logger.info("However, no volume control was available. Pause and restart once, maybe soundcard/mixer was not ready?")
+                            alreadyRestarted = True
+                            if self.coordinator:
+                                self.coordinator.radioRestart()
                         playing = True
                         break # can go and idle
                     else:
@@ -92,6 +100,15 @@ class MpdClientEventListener(object):
                 
                 if ('state' not in stat) or (stat['state'] != 'play'):
                     self.config.logger.info("MPD not playing")
+                    
+                if 'error' in stat:
+                    self.config.logger.warning("MPD reported an error: '%s'" % stat['error'])
+                    if alreadyRestarted is False:
+                        self.config.logger.warning("Trying to restart after one second")
+                        alreadyRestarted = True
+                        sleep(1)
+                        if self.coordinator:
+                            self.coordinator.radioRestart()
                 
                 if self.coordinator:
                     currentSongId = None
@@ -231,7 +248,16 @@ class MpdClient(object):
             return True
         except:
             self.logger.error("Error putting job into queue!")
-            return False                
+            return False 
+        
+    def pause(self):
+        self.logger.info("putting pause() into queue...")
+        try:
+            self.queue.put(item= lambda: self._pause(), block = True, timeout=0.5)
+            return True
+        except:
+            self.logger.error("Error putting job into queue!")
+            return False
             
     def _setVolume(self, vol):
         self.logger.info("setting volume to %i" % vol)
@@ -248,19 +274,30 @@ class MpdClient(object):
         with self.connection:
             try:
                 self.client.send_stop()
-                self.logger.info("...stopped!")
+                self.logger.info("...stop sent!")
+                return True
+            except:
+                self.logger.error("Caught exception in MpdClient.stop(): '%s'" % (sys.exc_info()[0]))
+                return False
+            
+    def _pause(self):
+        self.logger.info("pausing...")
+        with self.connection:
+            try:
+                self.client.send_pause()
+                self.logger.info("...paused!")
                 return True
             except:
                 self.logger.error("Caught exception in MpdClient.stop(): '%s'" % (sys.exc_info()[0]))
                 return False
     
     def _playTitle(self, title):
-        self.logger.info("starting...")
+        self.logger.info("starting play...")
         self.coordinator.currentlyPlaying(mpdPlaying=False)
         with self.connection:
             try:
                 self.client.send_play(title)
-                self.logger.info("...started!")
+                self.logger.info("...play sent!")
                 return True
             except:
                 self.logger.error("Caught exception in MpdClient.playTitle(): '%s'" % (sys.exc_info()[0]))
