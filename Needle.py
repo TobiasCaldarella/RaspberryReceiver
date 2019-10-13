@@ -50,6 +50,9 @@ class Needle(object):
         self.stepsPerChannel = int((self.numSteps-self.leftMargin)/self.numChannels)
         self.logger.debug("%i needleStepsPerChannel" % self.stepsPerChannel)
         self.workerThread.start() # will adjust the needle immediately since semaphore is initially in released state
+        # block until needle is in position
+        while(self.currentPosition != self.desiredPosition):
+            sleep(0.1)
         
     def stop(self):
         self.logger.debug("waiting for worker thread to stop...")
