@@ -97,7 +97,7 @@ class Coordinator(object):
             self._radioStop()
             self.radioState = _RadioState.STOPPED
             self.gpioController.enable_power_button()
-            self._radioPlay()
+            self.needle.setNeedleForChannel(ch=self.currentChannel, cb=self.radioPlay)
             self.bluetooth.enable()
             self.wheel.enable()
             
@@ -138,8 +138,8 @@ class Coordinator(object):
             self.logger.info("%i channels in radio playlist" % self.numChannels)
         
         if self.numChannels > 0 and self.config.needle_steps > 0:
-            self.needleStepsPerChannel = int((self.config.needle_steps-self.config.needle_left_margin)/self.numChannels)
-            self.logger.debug("%i needleStepsPerChannel" % self.needleStepsPerChannel)
+            if self.needle:
+                self.needle.init(self.numChannels)
             
         if self.bluetooth is not None:
             self.bluetooth.initialize()
@@ -167,8 +167,8 @@ class Coordinator(object):
             if self.currentChannel < (self.numChannels-1):
                 self._radioStop(False)
                 self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
-                self._setNeedleForChannel(self.currentChannel+1) # this sets self.currentChannel!
-                self._radioPlay()
+                self.currentChannel+=1
+                self.needle.setNeedleForChannel(ch=self.currentChannel,cb=self.radioPlay)
             else:
                 self.lightSignal()
                 self.logger.info("Invalid channel requested")
@@ -184,14 +184,14 @@ class Coordinator(object):
             if self.currentChannel > 0:
                 self._radioStop(False)
                 self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
-                self._setNeedleForChannel(self.currentChannel-1) # this sets self.currentChannel!
-                self._radioPlay()
+                self.currentChannel-=1
+                self.needle.setNeedleForChannel(ch=self.currentChannel,cb=self.radioPlay)
             else:
                 self.lightSignal()
                 self.logger.info("Invalid channel requested")
     
     def setChannel(self, ch):
-        ch-=1 # channel starts with 1 (human friendly numbering), mpd and neelde however start counting at 0
+        ch-=1 # channel starts with 1 (human friendly numbering), mpd and needle however start counting at 0
         with self.playStateCnd:
             if not self.poweredOn:
                 self.logger.info("not powered on, not setting channel")
@@ -202,27 +202,12 @@ class Coordinator(object):
             if ch >= 0 and ch < self.numChannels:
                 self._radioStop(False)
                 self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
-                self._setNeedleForChannel(ch)
-                self._radioPlay()
+                self.currentChannel=ch
+                self.needle.setNeedleForChannel(ch=self.currentChannel,cb=self.radioPlay)
             else:
                 self.lightSignal()
                 self.logger.info("Invalid channel requested")
                 
-    def _setNeedleForChannel(self, ch):
-        if self.needle is None:
-            return
-        if ch < 0 or ch > self.numChannels:
-            self.logger.warn("_setNeedleForChannel(%i): invalid channel" % ch)
-            return
-        
-        channelDiff = ch - self.currentChannel
-        if channelDiff > 0:
-            self.needle.moveRight(channelDiff * self.needleStepsPerChannel)
-        else:
-            self.needle.moveLeft(-channelDiff * self.needleStepsPerChannel)
-        self.currentChannel = ch
-        #self.currentlyPlaying() # update mqtt, will be done quite late otherwise
-
     def volumeUp(self):
         with self.playStateCnd:
             if not self.poweredOn:
@@ -348,7 +333,8 @@ class Coordinator(object):
             
             if channel is not None and channel != self.currentChannel and state is _RadioState.PLAYING:
                 self.logger.warn("Unexpected channel change, adjusting needle and informing mqtt...")
-                self._setNeedleForChannel(channel) # also sets self.currentChannel
+                self.currentChannel = channel
+                self.needle.setNeedleForChannel(channel)
                 
             if self.mqttClient is not None:
                 if self.isPoweredOn():
