@@ -191,7 +191,6 @@ class Coordinator(object):
                 self.logger.info("Invalid channel requested")
     
     def setChannel(self, ch):
-        ch-=1 # channel starts with 1 (human friendly numbering), mpd and needle however start counting at 0
         with self.playStateCnd:
             if not self.poweredOn:
                 self.logger.info("not powered on, not setting channel")

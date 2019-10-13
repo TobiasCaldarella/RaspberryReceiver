@@ -26,7 +26,7 @@ class IR(object):
         self.two_digit_timeout = None
         self.sleep_timeout = None
         self.twoDigitLock = threading.Lock()
-        self.twoDigitHandler = self.coordinator.setChannel
+        self.twoDigitHandler = self.setChannel
        
     def connect(self):
         self.logger.debug("IR connecting...")
@@ -50,6 +50,9 @@ class IR(object):
         self.logger.debug("IR disabled")
         self.enabled = False
     
+    def setChannelAtCoordinator(self, channel):
+        self.coordinator.setChannel(channel - 1) # channel starts at 0!
+    
     def do_two_digit_timeout(self):
         with self.twoDigitLock:
             if self.firstDigit is not None:
@@ -65,7 +68,7 @@ class IR(object):
         if self.two_digit_timeout:
             self.two_digit_timeout.cancel()
         self.firstDigit = None
-        self.twoDigitHandler = self.coordinator.setChannel
+        self.twoDigitHandler = self.setChannel
     
     def finish_two_digit_input(self, input):
         self.logger.debug("Two digit input finished: '%i'" % input)
@@ -73,7 +76,7 @@ class IR(object):
         if self.two_digit_timeout:
             self.two_digit_timeout.cancel()
         self.twoDigitHandler(input)
-        self.twoDigitHandler = self.coordinator.setChannel
+        self.twoDigitHandler = self.setChannel
     
     def do_getCode(self):
         coordinator = self.coordinator

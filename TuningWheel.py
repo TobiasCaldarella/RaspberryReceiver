@@ -79,7 +79,7 @@ class TuningWheel(object):
             self.buttonModeActive = False
             self.buttonModeTimer.cancel()
             # do something with collected ticks
-            self.coordinator.setChannel(self.buttonModeCounter)
+            self.coordinator.setChannel(self.buttonModeCounter-1) # channel starts at 0
             self.buttonModeCounter = 0
         else:
             self.buttonModeCounter = 0
