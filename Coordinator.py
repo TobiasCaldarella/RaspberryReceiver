@@ -119,9 +119,6 @@ class Coordinator(object):
     def initialize(self):
         self.gpioController.setStereoBlink(active=True, pause_s=0)
         # todo: maybe do this in background?
-        if self.needle is not None:
-            self.needle.moveLeft(self.config.needle_steps)
-            self.needle.moveRight(self.config.needle_left_margin)
             
         self.ir.connect()
         self.connectWifi()
@@ -164,6 +161,9 @@ class Coordinator(object):
             if not self.poweredOn:
                 self.logger.info("not powered on, not changing channel")
                 return
+            if self.radioState == _RadioState.BLUETOOTH:
+                self.logger.debug("Bluetooth active, not changing channel")
+                return
             if self.currentChannel < (self.numChannels-1):
                 self._radioStop(False)
                 self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
@@ -177,6 +177,9 @@ class Coordinator(object):
         with self.playStateCnd:
             if not self.poweredOn:
                 self.logger.info("not powered on, not chanigng channel")
+                return
+            if self.radioState == _RadioState.BLUETOOTH:
+                self.logger.debug("Bluetooth active, not changing channel")
                 return
             if self.currentChannel > 0:
                 self._radioStop(False)
@@ -192,6 +195,9 @@ class Coordinator(object):
         with self.playStateCnd:
             if not self.poweredOn:
                 self.logger.info("not powered on, not setting channel")
+                return
+            if self.radioState == _RadioState.BLUETOOTH:
+                self.logger.debug("Bluetooth active, not changing channel")
                 return
             if ch >= 0 and ch < self.numChannels:
                 self._radioStop(False)
@@ -282,7 +288,7 @@ class Coordinator(object):
             self.logger.info("Not playing, bluetooth is active!")
             return
         if not self.poweredOn:
-            self.logger.error("Cannot start play if not powered up")
+            self.logger.error("Will start play, not in powered up state")
             return
         self.gpioController.setNeedlelight(PowerState.ON)
         self.mpdClient.playTitle(self.currentChannel)
@@ -295,13 +301,13 @@ class Coordinator(object):
             self.logger.error("Need a lock!!")
             return False
         
-        self.logger.debug("radioState is '%s'" % desiredState)
+        self.logger.debug("radioState is '%s'" % self.radioState)
         while self.radioState != desiredState:
             self.logger.debug("waiting for radioState to become '%s'..." % desiredState)
             if self.playStateCnd.wait(timeout=10) is False:
                 self.logger.warn("timeout while waiting for state update!")
                 return False
-            self.logger.debug("radioState is '%s'" % desiredState)
+            self.logger.debug("radioState is '%s'" % self.radioState)
         return True
     
     def bluetoothPlaying(self, active):
