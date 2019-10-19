@@ -78,20 +78,23 @@ class MpdClientEventListener(object):
                 stat = self.client.status()
                 playing = False
                 currentSongInfo = None
-                alreadyRestarted = False
+                alreadyRestarted = 0
                 while ('state' in stat) and (stat['state'] == 'play') and 'error' not in stat:
                     # mpd wants to play but maybe waits for stream to start, we have to poll
                     if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed']) > 0):
                         # currently streaming
                         currentSongInfo = self.client.currentsong()
                         self.config.logger.info("MPD playing %s" % json.dumps(currentSongInfo))
-                        self.config.logger.debug("MPD playing %s" % json.dumps(stat))
-                        if alreadyRestarted is False and ('volume' not in stat or int(stat['volume']) is None):
+                        self.config.logger.debug("MPD playing %s" % json.dumps(stat))                                 
+                        if ('volume' not in stat or int(stat['volume']) is None):
                             self.config.logger.info("However, no volume control was available. Pause and restart once, maybe soundcard/mixer was not ready?")
-                            alreadyRestarted = True
-                            if self.coordinator:
+                            if alreadyRestarted < time.time()-10:
+                                alreadyRestarted = time.time()
                                 self.coordinator.radioRestart()
-                        playing = True
+                            else:
+                                self.config.info("Not restarting, already restarted @%i" % alreadyRestarted)
+                        else:                            
+                            playing = True
                         break # can go and idle
                     else:
                         self.config.logger.debug("MPD not streaming (yet?)")
@@ -103,12 +106,13 @@ class MpdClientEventListener(object):
                     
                 if 'error' in stat:
                     self.config.logger.warning("MPD reported an error: '%s'" % stat['error'])
-                    if alreadyRestarted is False:
+                    if alreadyRestarted < time.time()-10:
                         self.config.logger.warning("Trying to restart after one second")
                         alreadyRestarted = True
                         sleep(1)
-                        if self.coordinator:
-                            self.coordinator.radioRestart()
+                        self.coordinator.radioRestart()
+                    else:
+                        self.config.info("Not restarting, already restarted @%i" % alreadyRestarted)
                 
                 if self.coordinator:
                     currentSongId = None

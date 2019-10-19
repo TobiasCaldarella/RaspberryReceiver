@@ -122,12 +122,8 @@ class Coordinator(object):
             
         self.ir.connect()
         self.connectWifi()
-        
-        # connect MPD client and load playlist
-        if self.connectMqtt() is not True:
-            self.logger.warn("Could not connect to MQTT. Disabled...")
-            self.mqttClient = None
             
+        # connect MPD client and load playlist
         if self.mpdClient.connect() is not True:
             self.logger.warn("Could not connect to MPD. Disabled...");
             self.mpdClient = None
@@ -137,12 +133,16 @@ class Coordinator(object):
                 self.numChannels = self.mpdClient.getNumTracksInPlaylist()
             self.logger.info("%i channels in radio playlist" % self.numChannels)
         
-        if self.numChannels > 0 and self.config.needle_steps > 0:
+        if self.config.needle_steps > 0:
             if self.needle:
                 self.needle.init(self.numChannels)
             
         if self.bluetooth is not None:
             self.bluetooth.initialize()
+        
+        if self.connectMqtt() is not True:
+            self.logger.warn("Could not connect to MQTT. Disabled...")
+            self.mqttClient = None
             
         self.gpioController.enable_power_button()
         self.ir.enable()
@@ -314,6 +314,7 @@ class Coordinator(object):
             self.playStateCnd.notify_all()           
     
     def _setRadioState(self, state):
+        self.logger.debug("setting radio state to '%s'" % state)
         self.radioState = state
         self.playStateCnd.notify_all() # update done, notify
         if (state == _RadioState.PLAYING):
@@ -341,19 +342,19 @@ class Coordinator(object):
                 self.currentChannel = channel
                 self.needle.setNeedleForChannel(channel)
                 
-            if self.mqttClient is not None:
-                if self.isPoweredOn():
-                    self.mqttClient.publish_power_state(PowerState.ON)
-                else:
-                    self.mqttClient.publish_power_state(PowerState.OFF)
-                    
-                if self.gpioController is not None:
-                    brightness = self.gpioController.backlightIntensity
-                else:
-                    brightness = None
-                    
-                self.mqttClient.pubInfo(state, self.currentChannel+1, self.currentVolume, currentSongInfo, self.numChannels, brightness)  # human-readable channel
-            self.logger.debug("playing-state updated, notification sent")
+        if self.mqttClient is not None:
+            if self.isPoweredOn():
+                self.mqttClient.publish_power_state(PowerState.ON)
+            else:
+                self.mqttClient.publish_power_state(PowerState.OFF)
+                
+            if self.gpioController is not None:
+                brightness = self.gpioController.backlightIntensity
+            else:
+                brightness = None
+                
+            self.mqttClient.pubInfo(state, self.currentChannel+1, self.currentVolume, currentSongInfo, self.numChannels, brightness)  # human-readable channel
+        self.logger.debug("playing-state updated")
 
     def setBrightness(self, brightness):
         if self.gpioController:
