@@ -62,11 +62,10 @@ class Bluetooth(object):
         self.logger.info("Disabling bluetooth")
         self.stopPlayback()
         self.run = False
-        if self.workerThread is not None:
-            if wait_for_stop:
-                self.workerThread.join(2)
-                if self.workerThread.isAlive():
-                    self.logger.error("Could not stop bluetooth monitor thread!")
+        if self.workerThread is not None and wait_for_stop is True:
+            self.workerThread.join(2)
+            if self.workerThread.isAlive():
+                self.logger.error("Could not stop bluetooth monitor thread!")
         os.system("/usr/sbin/rfkill block bluetooth")
         
     def _waitForEvent(self):

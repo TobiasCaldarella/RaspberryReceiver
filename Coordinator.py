@@ -303,33 +303,39 @@ class Coordinator(object):
                     return
                 self._radioStop()
                 self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
-                self.radioState = _RadioState.BLUETOOTH # bluetooth state won't be overwritten by status updates
+                self._setRadioState(_RadioState.BLUETOOTH) # bluetooth state won't be overwritten by status updates
                 self.gpioController.setBacklight(PowerState.OFF)
                 self.gpioController.setBacklight(PowerState.ON)
-                self.gpioController.setStereoBlink(active=True, pause_s=1)
             elif active is False and self.radioState is _RadioState.BLUETOOTH:
                 self.gpioController.setBacklight(PowerState.OFF)
                 self.gpioController.setBacklight(PowerState.ON)
-                self.gpioController.setStereolight(PowerState.OFF)
-                self.radioState = _RadioState.STOPPED
+                self._setRadioState(_RadioState.STOPPED)
                 self._radioPlay() 
             self.playStateCnd.notify_all()           
     
-    def currentlyPlaying(self, mpdPlaying=None, channel = None, volume = None, currentSongInfo = None):
+    def _setRadioState(self, state):
+        self.radioState = state
+        self.playStateCnd.notify_all() # update done, notify
+        if (state == _RadioState.PLAYING):
+            self.gpioController.setStereolight(PowerState.ON)
+        elif (state == _RadioState.STOPPED):
+            self.gpioController.setStereolight(PowerState.OFF)  
+        elif (state == _RadioState.BLUETOOTH):
+            self.gpioController.setStereoBlink(active=True, pause_s=1)          
+    
+    def currentlyPlaying(self, mpdPlaying, channel = None, volume = None, currentSongInfo = None):
         self.logger.debug("updating playing-state...")
         with self.playStateCnd:
             if volume is not None:
                 self.currentVolume = volume
             
-            if mpdPlaying is not None and self.radioState is not _RadioState.BLUETOOTH: # do not overwrite bluetooth if volume etc. was changed
+            if self.radioState is not _RadioState.BLUETOOTH:
                 if mpdPlaying is True:
-                    self.radioState = _RadioState.PLAYING
-                    self.gpioController.setStereolight(PowerState.ON)            
+                    self._setRadioState(_RadioState.PLAYING)
                 else:
-                    self.radioState = _RadioState.STOPPED
-                    self.gpioController.setStereolight(PowerState.OFF) 
+                    self._setRadioState(_RadioState.STOPPED)
             state = self.radioState
-            
+
             if channel is not None and channel != self.currentChannel and state is _RadioState.PLAYING:
                 self.logger.warn("Unexpected channel change, adjusting needle and informing mqtt...")
                 self.currentChannel = channel
@@ -347,7 +353,6 @@ class Coordinator(object):
                     brightness = None
                     
                 self.mqttClient.pubInfo(state, self.currentChannel+1, self.currentVolume, currentSongInfo, self.numChannels, brightness)  # human-readable channel
-            self.playStateCnd.notify_all() # update done, notify
             self.logger.debug("playing-state updated, notification sent")
 
     def setBrightness(self, brightness):
