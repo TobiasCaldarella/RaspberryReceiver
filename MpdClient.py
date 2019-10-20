@@ -72,6 +72,7 @@ class MpdClientEventListener(object):
         # todo :stop thread
             
     def do_listen(self):
+        self.config.logger.debug("Listener thread started")
         while self.listen is True:
             #try:
                 self.config.logger.debug("getting mpd player status...")
@@ -134,10 +135,17 @@ class MpdClientEventListener(object):
                 #self.disconnect()
                 #time.sleep(1)
                 #self.connect()
+        self.config.logger.debug("Listener thread stopped")
     
     def startListener(self):
+        self.listen = True
         self.connect()
         self.listenerThread.start()
+        
+    def stopListener(self):
+        self.listen = False
+        self.disconnect()
+        self.listenerThread.join(timeout=2)
 
 
 class MpdClient(object):
@@ -157,17 +165,17 @@ class MpdClient(object):
         if coordinator is not None:
             coordinator.mpdClient = self
         self.listener = MpdClientEventListener(config, coordinator)
-        self.listener.startListener()
         self.queue = queue.Queue(10)
         self.queueHandlerThread = None
         
     def connect(self):
+        self.listener.startListener()
         self._startQueueHandler()
         return self.connection.connect()
     
     def disconnect(self):
         self._stopQueueHandler()
-        self.listener.disconnect()
+        self.listener.stopListener()
         self._stopQueueHandler()
         return self.connection.disconnect()
     

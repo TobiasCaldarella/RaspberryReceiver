@@ -98,10 +98,10 @@ class IR(object):
                     coordinator.powerOn()
             elif "channel_up" in code:
                 self.logger.debug("LIRC: 'channel_up'")
-                coordinator.channelUp()
+                coordinator.setChannel(channel=1, relative=True)
             elif "channel_down" in code:
                 self.logger.debug("LIRC: 'channel_down'")
-                coordinator.channelDown()
+                coordinator.setChannel(channel=-1, relative=True)
             elif "volume_up" in code:
                 self.logger.debug("LIRC: 'volume_up'")
                 coordinator.volumeUp()

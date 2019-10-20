@@ -54,7 +54,7 @@ class TuningWheel(object):
                     if self.buttonModeCounter > 0:
                         self.buttonModeCounter-=1
                 else:
-                    self.coordinator.channelDown()
+                    self.coordinator.setChannel(channel=-1, relative=True)
         elif GPIO.input(self.gpio_left_sensor) is GPIO.HIGH:
             self.firstDown = Side.RIGHT
     
@@ -67,7 +67,7 @@ class TuningWheel(object):
                 if self.buttonModeActive:
                     self.buttonModeCounter+=1
                 else:
-                    self.coordinator.channelUp()
+                    self.coordinator.setChannel(channel=1, relative=True)
         elif GPIO.input(self.gpio_right_sensor) is GPIO.HIGH:
             self.firstDown = Side.LEFT
             

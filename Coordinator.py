@@ -156,52 +156,26 @@ class Coordinator(object):
             self.gpioController.setBacklight(PowerState.OFF)
         self.gpioController.setBacklight(PowerState.ON, intensity)
     
-    def channelUp(self):
+    def setChannel(self, channel, relative = False):
         with self.playStateCnd:
-            if not self.poweredOn:
-                self.logger.info("not powered on, not changing channel")
-                return
             if self.radioState == _RadioState.BLUETOOTH:
                 self.logger.debug("Bluetooth active, not changing channel")
                 return
-            if self.currentChannel < (self.numChannels-1):
-                self._radioStop(False)
-                self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
-                self.currentChannel+=1
-                self.needle.setNeedleForChannel(ch=self.currentChannel,cb=self.radioPlay)
+            
+            if relative is True:
+                newChannel = self.currentChannel + channel
             else:
-                self.lightSignal()
-                self.logger.info("Invalid channel requested")
-    
-    def channelDown(self):
-        with self.playStateCnd:
-            if not self.poweredOn:
-                self.logger.info("not powered on, not chanigng channel")
-                return
-            if self.radioState == _RadioState.BLUETOOTH:
-                self.logger.debug("Bluetooth active, not changing channel")
-                return
-            if self.currentChannel > 0:
+                newChannel = channel
+                
+            if (newChannel < (self.numChannels-1)) and (newChannel > 0):
+                if not self.poweredOn:
+                    self.logger.info("not powered on, only setting selected channel %i" % newChannel)
+                    self.currentChannel = newChannel
+                    return
+                self.logger.info("setting channel to %i" % newChannel)
                 self._radioStop(False)
                 self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
-                self.currentChannel-=1
-                self.needle.setNeedleForChannel(ch=self.currentChannel,cb=self.radioPlay)
-            else:
-                self.lightSignal()
-                self.logger.info("Invalid channel requested")
-    
-    def setChannel(self, ch):
-        with self.playStateCnd:
-            if not self.poweredOn:
-                self.logger.info("not powered on, not setting channel")
-                return
-            if self.radioState == _RadioState.BLUETOOTH:
-                self.logger.debug("Bluetooth active, not changing channel")
-                return
-            if ch >= 0 and ch < self.numChannels:
-                self._radioStop(False)
-                self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
-                self.currentChannel=ch
+                self.currentChannel = newChannel
                 self.needle.setNeedleForChannel(ch=self.currentChannel,cb=self.radioPlay)
             else:
                 self.lightSignal()
