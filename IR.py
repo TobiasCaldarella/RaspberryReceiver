@@ -51,7 +51,8 @@ class IR(object):
         self.enabled = False
     
     def setChannelAtCoordinator(self, channel):
-        self.coordinator.setChannel(channel - 1) # channel starts at 0!
+        self.coordinator.setChannel(channel = channel - 1, relative = False, setIfPowerOff = True) # channel starts at 0!
+        self.coordinator.powerOn()
     
     def do_two_digit_timeout(self):
         with self.twoDigitLock:
