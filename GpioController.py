@@ -55,6 +55,7 @@ class GpioController(object):
             self.stereoPwm = GPIO.PWM(self.gpio_stereo, 500)
             self.stereoPwm.start(0)
         
+        self.needleLightState = PowerState.OFF
         self.backlightState = PowerState.OFF
         self.backlightIntensity = 0
         self.backlightDefaultIntensity = config.backlight_default_brightness
@@ -179,7 +180,8 @@ class GpioController(object):
         else:
             gpioState = GPIO.LOW
         GPIO.output(self.gpio_needle, gpioState)
-    
+        self.needleLightState = state
+            
     def enable_power_button(self):
         self.logger.debug("Power button enabled")
         GPIO.add_event_detect(self.gpio_pwr_btn, GPIO.FALLING, callback=self.do_power_button, bouncetime=300)    

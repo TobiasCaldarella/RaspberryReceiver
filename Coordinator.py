@@ -155,6 +155,19 @@ class Coordinator(object):
         else:
             self.gpioController.setBacklight(PowerState.OFF)
         self.gpioController.setBacklight(PowerState.ON, intensity)
+        
+    def invertNeedleLightState(self, restore):
+        with self.playStateCnd:
+            if restore == True:
+                if self.radioState == _RadioState.PLAYING:
+                    self.gpioController.setNeedlelight(PowerState.ON)
+                else
+                    self.gpioController.setNeedlelight(PowerState.OFF)
+            else:    
+                if self.gpioController.needleLightState == PowerState.ON:
+                    self.gpioController.setNeedlelight(PowerState.OFF)
+                else:
+                    self.gpioController.setNeedlelight(PowerState.ON)
     
     def setChannel(self, channel, relative = False, setIfPowerOff = False):
         with self.playStateCnd:
