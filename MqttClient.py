@@ -146,7 +146,7 @@ class MqttClient(object):
             return
         try:
             newChannel = int(message.payload.decode("utf-8"))
-            self.coordinator.setChannel(newChannel-1)  # channel starts at 0
+            self.coordinator.setChannel(channel = newChannel-1, relative = False, setIfPowerOff = True)  # channel starts at 0
         except ValueError:
             self.logger.warn("Invalid data over 'channel' topic received, must be a number")
         except UnicodeDecodeError:

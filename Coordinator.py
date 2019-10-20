@@ -156,7 +156,7 @@ class Coordinator(object):
             self.gpioController.setBacklight(PowerState.OFF)
         self.gpioController.setBacklight(PowerState.ON, intensity)
     
-    def setChannel(self, channel, relative = False):
+    def setChannel(self, channel, relative = False, setIfPowerOff = False):
         with self.playStateCnd:
             if self.radioState == _RadioState.BLUETOOTH:
                 self.logger.debug("Bluetooth active, not changing channel")
@@ -169,8 +169,11 @@ class Coordinator(object):
                 
             if (newChannel < (self.numChannels-1)) and (newChannel > 0):
                 if not self.poweredOn:
-                    self.logger.info("not powered on, only setting selected channel %i" % newChannel)
-                    self.currentChannel = newChannel
+                    if setIfPowerOff:
+                        self.logger.info("not powered on, only setting selected channel %i" % newChannel)
+                        self.currentChannel = newChannel
+                    else:
+                        self.logger.info("not powered on, not setting channel")
                     return
                 self.logger.info("setting channel to %i" % newChannel)
                 self._radioStop(False)
