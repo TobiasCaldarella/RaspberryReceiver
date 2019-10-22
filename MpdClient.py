@@ -85,8 +85,8 @@ class MpdClientEventListener(object):
                     if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed']) > 0):
                         # currently streaming
                         currentSongInfo = self.client.currentsong()
-                        self.config.logger.info("MPD playing %s" % json.dumps(currentSongInfo))
-                        self.config.logger.debug("MPD playing %s" % json.dumps(stat))                                 
+                        self.config.logger.info("MPD playing currentSongInfo: %s" % json.dumps(currentSongInfo))
+                        self.config.logger.debug("MPD playing stats: %s" % json.dumps(stat))                                 
                         if ('volume' not in stat or int(stat['volume']) is None):
                             self.config.logger.info("However, no volume control was available. Pause and restart once, maybe soundcard/mixer was not ready?")
                             if alreadyRestarted < time.time()-10:
@@ -185,7 +185,7 @@ class MpdClient(object):
                 pl = self.client.playlistinfo()
                 return len(pl)
             except:
-                self.logger.error("Caught exception in MpdClient.pubInfo(): '%s'" % (sys.exc_info()[0]))
+                self.logger.error("Caught exception in MpdClient.playlistinfo(): '%s'" % (sys.exc_info()[0]))
                 return 0
     
     def loadRadioPlaylist(self):

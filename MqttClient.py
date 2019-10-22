@@ -96,37 +96,36 @@ class MqttClient(object):
             return False
             
     
-    def pubInfo(self, state = None, channel = None, volume = None, currentSongInfo = None, numChannelsInPlaylist = None, brightness = None):
+    def pubInfo(self, radioState, channel, volume, currentSongInfo, numChannelsInPlaylist, brightness, poweredOn):
         try:
             self.logger.debug("Publishing status update")
             
-            infoDict = {}
-            if currentSongInfo is not None:
-                infoDict = currentSongInfo
-            if volume is not None:
-                self.client.publish(self.config.mqtt_base_topic + "/volume", payload=str(volume))
-                infoDict['volume'] = volume
-            if channel is not None:
-                self.client.publish(self.config.mqtt_base_topic + "/channel", payload=str(channel))
-                infoDict['channel'] = channel
-            if numChannelsInPlaylist is not None:
-                infoDict['numChannelsInPlaylist'] = numChannelsInPlaylist
-            if 'title' not in infoDict: 
-                if 'name' in infoDict:
-                    infoDict['title'] = infoDict['name']
-                else:
-                    infoDict['title'] = "N/A" 
+            infoDict = currentSongInfo
+            self.client.publish(self.config.mqtt_base_topic + "/volume", payload=str(volume))
+            infoDict['volume'] = volume
+            self.client.publish(self.config.mqtt_base_topic + "/channel", payload=str(channel))
+            infoDict['channel'] = channel
+            infoDict['numChannelsInPlaylist'] = numChannelsInPlaylist 
+            if 'name' in infoDict:
+                infoDict['name'] = infoDict['name']
+            else:
+                infoDict['name'] = "N/A"
+            if 'title' in infoDict:
+                infoDict['title'] = infoDict['title']
+            else:
+                infoDict['title'] = "N/A" 
             
-            if brightness is not None:
-                infoDict['brightness'] = brightness
+            infoDict['brightness'] = brightness
+            infoDict['power'] = poweredOn
             
-            if state is not None:
-                if state is _RadioState.PLAYING:
-                    infoDict['state'] = "Playing_Radio"
-                elif state is _RadioState.BLUETOOTH:
-                    infoDict['state'] = "Playing_Bluetooth"
-                else:
-                    infoDict['state'] = "Stopped"
+            if radioState is _RadioState.PLAYING:
+                infoDict['state'] = "Playing_Radio"
+            elif radioState is _RadioState.BLUETOOTH:
+                infoDict['state'] = "Playing_Bluetooth"
+            elif radioState is _RadioState.STOPPED:
+                infoDict['state'] = "Stopped"
+            else:
+                infoDict['state'] = "Unknown"
             
             infoDict['notify'] = 0 # always0 for now, required to workaround bug in openHAB
             self.client.publish(self.config.mqtt_base_topic + "/info", payload=str(json.dumps(infoDict))) # output info as json string
