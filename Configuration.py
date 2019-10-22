@@ -4,6 +4,12 @@ Created on 07.08.2019
 @author: tobias
 '''
 
+from enum import Enum
+class _RadioState(Enum):
+    STOPPED = 0
+    PLAYING = 1
+    BLUETOOTH = 2
+
 class Configuration(object):
     '''
     classdocs
@@ -42,7 +48,8 @@ class Configuration(object):
         
         # MPD stuff
         self.mpd_radio_playlist = "http://local_pub.openhabianpi/radio.m3u"
-        
+        self.mpd_local_playlist = "/var/lib/mpd/playlists/radio.m3u"
+        self.mpd_playlist_name = "radio"
         # Needle mover
         self.gpio_needle_a = 19
         self.gpio_needle_b = 13

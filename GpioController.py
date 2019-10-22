@@ -9,6 +9,7 @@ import Configuration
 import time
 import threading
 import Coordinator
+import traceback
 
 class PowerState(Enum):
     ON = 1

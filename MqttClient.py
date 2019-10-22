@@ -11,7 +11,7 @@ from threading import Event
 from paho.mqtt.client import MQTT_ERR_SUCCESS
 import sys
 import json
-from Coordinator import _RadioState
+from Configuration import _RadioState
 import threading
 
 class MqttClient(object):

@@ -11,6 +11,7 @@ import time
 import json
 import queue
 from time import sleep
+from Configuration import _RadioState
 
 class _Connection:
     def __init__(self, parent):
@@ -188,20 +189,24 @@ class MpdClient(object):
                 self.logger.error("Caught exception in MpdClient.playlistinfo(): '%s'" % (sys.exc_info()[0]))
                 return 0
     
-    def loadRadioPlaylist(self):
-        self.logger.debug("loading playlist '%s'" % (self.config.mpd_radio_playlist))
-        i = 1
-        while i < 10:
+    def load(self, url):
+        self.logger.debug("loading url '%s'" % url)
+        for i in range(1,10):
             try:
                 with self.connection:
                     self.client.clear()
-                    self.client.load(self.config.mpd_radio_playlist)
+                    self.client.load(url)
                     self.client.single(1)
+                    self.client.consume(0)
                     return True
             except:
-                self.logger.error("Error loading mpd playlist, attempt %i/10" % i)
+                self.logger.error("Error loading '%s', attempt %i/10" % (url,i))
                 time.sleep(10)
         return False
+    
+    def loadRadioPlaylist(self):
+        self.logger.debug("loading playlist '%s'" % (self.config.mpd_playlist_name))
+        return self.load(self.config.mpd_playlist_name)
     
     def _stopQueueHandler(self):
         if self.queueHandlerThread is None:
@@ -235,10 +240,32 @@ class MpdClient(object):
             queue_item()
         self.logger.debug("Queue handler stopped")
     
-    def playTitle(self, title):
-        self.logger.info("putting playTitle(%s) into queue..." % title)
+    def playSingleFile(self, file):
+        ''' plays a single file, synchronously '''
+        self.logger.info("Playing single file '%s'...")
+        # what if radio state not playing nor stopped?
+        self._stopQueueHandler()
+        self._stop()
+        self.coordinator.waitForRadioState(_RadioState.STOPPED)
+        with self.connection:
+            self.client.clear()
+            self.client.add(file)
+            self.client.consume(1)
+            self.client.play()
+        while self.coordinator.waitForRadioState(_RadioState.STOPPED):
+            if self.getNumTracksInPlaylist() > 0:
+                self.logger.debug("Playlist not consumed... waiting")
+                sleep(0.1)
+            else:
+                self.logger.debug("Playlist consumed, playback finished")
+                break
+        self.loadRadioPlaylist() # and load radio playlist to leave everything as it was before 
+        self._startQueueHandler()  
+    
+    def playTitle(self, playlistPosition):
+        self.logger.info("putting playTitle(%s) into queue..." % playlistPosition)
         try:
-            self.queue.put(item= lambda: self._playTitle(title), block = True, timeout=0.5)
+            self.queue.put(item= lambda: self._playTitle(playlistPosition), block = True, timeout=0.5)
             return True
         except:
             self.logger.error("Error putting job into queue!")
@@ -269,13 +296,13 @@ class MpdClient(object):
             return True
         except:
             self.logger.error("Error putting job into queue!")
-            return False
-            
+            return False 
+    
     def _setVolume(self, vol):
         self.logger.info("setting volume to %i" % vol)
         with self.connection:
             try:
-                self.client.send_setvol(vol)
+                self.client.setvol(vol)
                 return True
             except:
                 self.logger.error("Caught exception in MpdClient.setVolume(): '%s'" % (sys.exc_info()[0]))
@@ -285,7 +312,7 @@ class MpdClient(object):
         self.logger.info("stopping...")
         with self.connection:
             try:
-                self.client.send_stop()
+                self.client.stop()
                 self.logger.info("...stop sent!")
                 return True
             except:
@@ -296,19 +323,19 @@ class MpdClient(object):
         self.logger.info("pausing...")
         with self.connection:
             try:
-                self.client.send_pause()
+                self.client.pause()
                 self.logger.info("...paused!")
                 return True
             except:
                 self.logger.error("Caught exception in MpdClient.stop(): '%s'" % (sys.exc_info()[0]))
                 return False
     
-    def _playTitle(self, title):
+    def _playTitle(self, playlistPosition):
         self.logger.info("starting play...")
         self.coordinator.currentlyPlaying(mpdPlaying=False)
         with self.connection:
             try:
-                self.client.send_play(title)
+                self.client.play(playlistPosition)
                 self.logger.info("...play sent!")
                 return True
             except:

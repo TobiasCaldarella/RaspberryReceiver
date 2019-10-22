@@ -10,11 +10,9 @@ import threading
 from enum import Enum
 import time
 from Bluetooth import Bluetooth
-
-class _RadioState(Enum):
-    STOPPED = 0
-    PLAYING = 1
-    BLUETOOTH = 2
+import urllib.request 
+from time import sleep
+from Configuration import _RadioState
 
 class Coordinator(object):
     '''
@@ -38,7 +36,7 @@ class Coordinator(object):
         self.needleStepsPerChannel = 0
         self.radioState = _RadioState.STOPPED
         self.poweredOn = False
-        self.currentVolume = 0
+        self.currentVolume = 70
         self.sleepTimer = None
         self.playStateCnd = threading.Condition()
         self.currentSongInfo = {}
@@ -98,6 +96,7 @@ class Coordinator(object):
             self._radioStop()
             self.radioState = _RadioState.STOPPED
             self.gpioController.enable_power_button()
+            self.mpdClient.playSingleFile("silence.mp3")
             self.needle.setNeedleForChannel(ch=self.currentChannel, cb=self.radioPlay)
             self.bluetooth.enable()
             self.wheel.enable()
@@ -130,13 +129,16 @@ class Coordinator(object):
             self.mpdClient = None
         else:
             self.gpioController.setStereoBlink(active=True, pause_s=3)
+            self.downloadPlaylist()
             if self.mpdClient.loadRadioPlaylist():
                 self.numChannels = self.mpdClient.getNumTracksInPlaylist()
             self.logger.info("%i channels in radio playlist" % self.numChannels)
         
-        if self.config.needle_steps > 0:
+        if self.config.needle_steps > 0 and self.numChannels > 0:
             if self.needle:
                 self.needle.init(self.numChannels)
+        else:
+            self.needle = None
             
         if self.bluetooth is not None:
             self.bluetooth.initialize()
@@ -149,6 +151,17 @@ class Coordinator(object):
         self.ir.enable()
         self.gpioController.setStereoBlink(active=True, pause_s=10)
         self.sendStateToMqtt()
+        
+    def downloadPlaylist(self):
+        for i in range(1,10):
+            try:
+                urllib.request.urlretrieve(self.config.mpd_radio_playlist, self.config.mpd_local_playlist)
+                return
+            except:
+                self.logger.error("Could not download '%s' to '%s'! Attempt %i/10" % 
+                                  (self.config.mpd_radio_playlist, self.config.mpd_local_playlist, i))
+                sleep(5)
+                self.gpioController.setStereoBlink(active=True, pause_s=1)
         
     def lightSignal(self):
         intensity = self.gpioController.backlightIntensity
@@ -264,7 +277,7 @@ class Coordinator(object):
             self.logger.info("Not playing, bluetooth is active!")
             return
         if not self.poweredOn:
-            self.logger.error("Will start play, not in powered up state")
+            self.logger.error("Will not start play, not in powered up state")
             return
         self.gpioController.setNeedlelight(PowerState.ON)
         self.mpdClient.setVolume(self.currentVolume)
@@ -275,9 +288,12 @@ class Coordinator(object):
     
     def waitForRadioState(self, desiredState, lock=None):
         if lock is None:
-            self.logger.error("Need a lock!!")
-            return False
-        
+            with self.playStateCnd:
+                return self._waitForRadioState(desiredState)
+        else:
+            return self._waitForRadioState(desiredState)
+    
+    def _waitForRadioState(self, desiredState):
         self.logger.debug("radioState is '%s'" % self.radioState)
         while self.radioState != desiredState:
             self.logger.debug("waiting for radioState to become '%s'..." % desiredState)
@@ -312,6 +328,7 @@ class Coordinator(object):
         self.playStateCnd.notify_all() # update done, notify
         if (state == _RadioState.PLAYING):
             self.gpioController.setStereolight(PowerState.ON)
+            self.gpioController.setNeedlelight(PowerState.ON)
         elif (state == _RadioState.STOPPED):
             self.gpioController.setStereolight(PowerState.OFF)  
         elif (state == _RadioState.BLUETOOTH):
