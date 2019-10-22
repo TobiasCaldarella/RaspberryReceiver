@@ -82,7 +82,7 @@ class GpioController(object):
             time.sleep(1.0)
         else:
             GPIO.output(self.gpio_pwr, GPIO.LOW) # active on low!
-            time.sleep(3.0)
+            time.sleep(2.0)
             if self.gpio_speakers is not None:
                 GPIO.output(self.gpio_speakers, GPIO.HIGH)
                 self.logger.debug("Speakers on")
