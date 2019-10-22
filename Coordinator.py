@@ -148,6 +148,7 @@ class Coordinator(object):
         self.gpioController.enable_power_button()
         self.ir.enable()
         self.gpioController.setStereoBlink(active=True, pause_s=10)
+        self.sendStateToMqtt()
         
     def lightSignal(self):
         intensity = self.gpioController.backlightIntensity

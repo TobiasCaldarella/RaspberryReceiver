@@ -37,6 +37,7 @@ class MqttClient(object):
         client.message_callback_add(self.config.mqtt_base_topic + "/channel/set", self.on_channel_msg)
         client.message_callback_add(self.config.mqtt_base_topic + "/notify/set", self.on_notify_msg)
         client.message_callback_add(self.config.mqtt_base_topic + "/brightness/set", self.on_brightness_msg)
+        client.message_callback_add(self.config.mqtt_base_topic + "/commands", self.on_command_msg)
         self.client = client
         self.coordinator = coordinator
         coordinator.mqttClient = self
@@ -116,7 +117,10 @@ class MqttClient(object):
                 infoDict['title'] = "N/A" 
             
             infoDict['brightness'] = brightness
-            infoDict['power'] = poweredOn
+            if poweredOn == True:
+                infoDict['power'] = "ON"
+            else:
+                infoDict['power'] = "OFF"
             
             if radioState is _RadioState.PLAYING:
                 infoDict['state'] = "Playing_Radio"
@@ -214,13 +218,34 @@ class MqttClient(object):
             self.logger.warn("Invalid data over 'brightness' topic received, must be a number in an utf-8 string")
         except UnicodeDecodeError:
             self.logger.warn("Invalid data over 'brightness' topic received, must be a number in an utf-8 string")
+            
+    def on_command_msg(self, client, userdata, message):
+        try:
+            payload = message.payload.decode("utf-8")
+            self.logger.debug("Received payload on commands topic: '%s'", payload)
+            commands = json.loads(payload);
+            self.logger.info("Received commands: %s", commands)
+            if 'channel' in commands:
+                self.coordinator.setChannel(channel = int(commands['channel'])-1, relative = False, setIfPowerOff = True)  # channel starts at 0
+            if 'volume' in commands:
+                self.coordinator.setVolume(int(commands['volume']))          
+            if 'power' in commands:
+                if commands['power'] == 'ON':
+                    self.coordinator.powerOn()
+                if commands['power'] == 'OFF':
+                    self.coordinator.powerOff()
+                    
+        except ValueError:
+            self.logger.warn("Invalid data over 'commands' topic received, must be a utf-8 json string with commands")
+        except UnicodeDecodeError:
+            self.logger.warn("Invalid data over 'commands' topic received, must be a utf-8 json string")
     
     def on_subscribe(self, client, userdata, mid, granted_qos):
         pass
     
     def on_connect(self, client, userdata, flags, rc):
         self.logger.info("MQTT connecton established")
-        for topic in { self.config.mqtt_base_topic + "/power/set", self.config.mqtt_base_topic + "/volume/set", self.config.mqtt_base_topic + "/channel/set", self.config.mqtt_base_topic + "/notify/set", self.config.mqtt_base_topic + "/brightness/set"}:
+        for topic in { self.config.mqtt_base_topic + "/power/set", self.config.mqtt_base_topic + "/volume/set", self.config.mqtt_base_topic + "/channel/set", self.config.mqtt_base_topic + "/notify/set", self.config.mqtt_base_topic + "/brightness/set", self.config.mqtt_base_topic + "/commands"}:
             if client.subscribe(topic)[0] is not MQTT_ERR_SUCCESS:
                 self.logger.warn("mqtt subscription to topic '%s' failed." % topic)
         self.connectEvent.set()
