@@ -99,20 +99,23 @@ class IR(object):
                     coordinator.powerOff()
                 else:
                     coordinator.powerOn()
+                continue
             elif "channel_up" in code:
                 self.logger.debug("LIRC: 'channel_up'")
                 coordinator.setChannel(channel=1, relative=True)
+                continue
             elif "channel_down" in code:
                 self.logger.debug("LIRC: 'channel_down'")
                 coordinator.setChannel(channel=-1, relative=True)
+                continue
             elif "volume_up" in code:
                 self.logger.debug("LIRC: 'volume_up'")
                 coordinator.volumeUp()
-                pass
+                continue
             elif "volume_down" in code:
                 self.logger.debug("LIRC: 'volume_down'")
                 coordinator.volumeDown()
-                pass
+                continue
             elif "1" in code:
                 self.logger.debug("LIRC: '1'")
                 digit = 1
