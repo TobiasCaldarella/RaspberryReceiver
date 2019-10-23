@@ -273,11 +273,18 @@ class MpdClient(object):
         self.logger.debug("Queue handler stopped")
     
     def playSingleFile(self, file):
-        ''' plays a single file, synchronously '''
+        self.logger.info("putting playSingleFile(%s) into queue..." % file)
+        try:
+            self.queue.put(item= lambda: self._playSingleFile(file), block = True, timeout=0.5)
+            return True
+        except:
+            self.logger.error("Error putting job into queue!")
+            return False
+        
+    def _playSingleFile(self, file):
         self.logger.info("Playing single file '%s'..." % file)
         try:
             # what if radio state not playing nor stopped?
-            self._stopQueueHandler()
             self._stop()
             # Todo: disable/pause bluetooth?
             self.coordinator.waitForRadioState(_RadioState.STOPPED)
@@ -300,7 +307,6 @@ class MpdClient(object):
             self.listener.resetStatus()
             self.listener.setNotifyCoordinator(True)
             self.loadRadioPlaylist() # and load radio playlist to leave everything as it was before 
-            self._startQueueHandler()
             # todo: reenable bluetooth?
     
     def playTitle(self, playlistPosition):
