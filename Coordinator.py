@@ -100,6 +100,7 @@ class Coordinator(object):
             self.needle.setNeedleForChannel(ch=self.currentChannel, cb=self.radioPlay)
             self.bluetooth.enable()
             self.wheel.enable()
+        self.mpdClient.notifyCoordinator = True # now we are ready to receive status updates
             
     def sleep(self, time_m):
         with self.playStateCnd:
@@ -294,7 +295,7 @@ class Coordinator(object):
             return self._waitForRadioState(desiredState)
     
     def _waitForRadioState(self, desiredState):
-        self.logger.debug("radioState is '%s'" % self.radioState)
+        self.logger.debug("radioState is '%s', desired: '%s'" % (self.radioState, desiredState))
         while self.radioState != desiredState:
             self.logger.debug("waiting for radioState to become '%s'..." % desiredState)
             if self.playStateCnd.wait(timeout=10) is False:
