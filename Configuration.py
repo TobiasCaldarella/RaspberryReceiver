@@ -59,6 +59,9 @@ class Configuration(object):
         self.needle_left_margin = 150
         self.needle_sleep_time = 0.002
         
+        # text to speech options
+        self.tts_api_key = '88ecced13cfe4f2b938c13e5dfdf1575'
+        
         # misc options
         self.backlight_default_brightness = 100
         self.backlight_sleep_brightness = 0

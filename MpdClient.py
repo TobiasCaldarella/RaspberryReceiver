@@ -212,14 +212,15 @@ class MpdClient(object):
         self._stopQueueHandler()
         return self.connection.disconnect()
     
-    def getNumTracksInPlaylist(self):
+    def getTitlesFromPlaylist(self):
         with self.connection:
             try:
                 pl = self.client.playlistinfo()
-                return len(pl)
+                titles = [i['name'] for i in pl]
+                return titles
             except:
                 self.logger.error("Caught exception in MpdClient.playlistinfo(): '%s'" % (sys.exc_info()[0]))
-                return 0
+                return []
     
     def load(self, url):
         self.logger.debug("loading url '%s'" % url)
@@ -272,19 +273,20 @@ class MpdClient(object):
             queue_item()
         self.logger.debug("Queue handler stopped")
     
-    def playSingleFile(self, file):
+    def playSingleFile(self, file, vol = None):
         self.logger.info("putting playSingleFile(%s) into queue..." % file)
         try:
-            self.queue.put(item= lambda: self._playSingleFile(file), block = True, timeout=0.5)
+            self.queue.put(item= lambda: self._playSingleFile(file, vol), block = True, timeout=0.5)
             return True
         except:
             self.logger.error("Error putting job into queue!")
             return False
         
-    def _playSingleFile(self, file):
+    def _playSingleFile(self, file, vol):
         self.logger.info("Playing single file '%s'..." % file)
         try:
             # what if radio state not playing nor stopped?
+            previousState = self.coordinator.radioState
             self._stop()
             # Todo: disable/pause bluetooth?
             self.coordinator.waitForRadioState(_RadioState.STOPPED)
@@ -294,6 +296,8 @@ class MpdClient(object):
                 self.client.clear()
                 self.client.add(file)
                 self.client.consume(1)
+                if vol is not None:
+                    self.client.setvol(vol)
                 self.client.play()
                 # todo: wait for playback to start and finish
             self.listener.waitForStatus('started', 10)
@@ -307,6 +311,8 @@ class MpdClient(object):
             self.listener.resetStatus()
             self.listener.setNotifyCoordinator(True)
             self.loadRadioPlaylist() # and load radio playlist to leave everything as it was before 
+            if previousState == _RadioState.PLAYING:
+                self.coordinator.radioPlay()
             # todo: reenable bluetooth?
     
     def playTitle(self, playlistPosition):

@@ -17,6 +17,7 @@ import IR
 from time import sleep
 import RPi.GPIO as GPIO
 import Bluetooth
+import TextToSpeech
 
 GPIO.cleanup()
 GPIO.setmode(GPIO.BCM)
@@ -47,6 +48,7 @@ if __name__ == '__main__':
     mpdClient = MpdClient.MpdClient(config, coordinator)
     needle = Needle.Needle(config, coordinator)
     bluetooth = Bluetooth.Bluetooth(config, coordinator)
+    textToSpeech = TextToSpeech.TextToSpeech(config, coordinator)
     
     coordinator.initialize()
     

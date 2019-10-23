@@ -40,6 +40,7 @@ class Coordinator(object):
         self.sleepTimer = None
         self.playStateCnd = threading.Condition()
         self.currentSongInfo = {}
+        self.textToSpeech = None
         
     def connectWifi(self):
         self.gpioController.setStereoBlink(active=True, pause_s=2)
@@ -110,6 +111,7 @@ class Coordinator(object):
             
             if time_m > 0:
                 self.logger.info("Sleep set to %i minutes" % time_m)
+                self.textToSpeech.speak(text=("Schalte in %i Minuten aus." % time_m), lang='de-de')
                 self.sleepTimer = threading.Timer(time_m * 60, self.powerOff)
                 self.sleepTimer.start()
                 self.setBrightness(self.config.backlight_sleep_brightness)
@@ -132,7 +134,8 @@ class Coordinator(object):
             self.gpioController.setStereoBlink(active=True, pause_s=3)
             self.downloadPlaylist()
             if self.mpdClient.loadRadioPlaylist():
-                self.numChannels = self.mpdClient.getNumTracksInPlaylist()
+                self.channels = self.mpdClient.getTitlesFromPlaylist()
+                self.numChannels = len(self.channels)
             self.logger.info("%i channels in radio playlist" % self.numChannels)
         
         if self.config.needle_steps > 0 and self.numChannels > 0:
@@ -196,7 +199,7 @@ class Coordinator(object):
             else:
                 newChannel = channel
                 
-            if (newChannel < (self.numChannels-1)) and (newChannel > 0):
+            if (newChannel < (self.numChannels-1)) and (newChannel >= 0):
                 if not self.poweredOn:
                     if setIfPowerOff:
                         self.logger.info("not powered on, only setting selected channel %i" % newChannel)
@@ -208,7 +211,8 @@ class Coordinator(object):
                 self._radioStop(False)
                 self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
                 self.currentChannel = newChannel
-                self.needle.setNeedleForChannel(ch=self.currentChannel,cb=self.radioPlay)
+                self.gpioController.setNeedlelight(PowerState.ON)
+                self.needle.setNeedleForChannel(ch=self.currentChannel,cb=lambda: self.radioPlay(announceChannel=True))
             else:
                 self.lightSignal()
                 self.logger.info("Invalid channel requested")
@@ -262,9 +266,9 @@ class Coordinator(object):
         if needleLightOff:
             self.gpioController.setNeedlelight(PowerState.OFF)
         
-    def radioPlay(self):
+    def radioPlay(self, announceChannel = False):
         with self.playStateCnd:
-            self._radioPlay()
+            self._radioPlay(announceChannel=announceChannel)
     
     def _radioPause(self):
         if not self.poweredOn:
@@ -273,7 +277,7 @@ class Coordinator(object):
         self.gpioController.setNeedlelight(PowerState.OFF)
         self.mpdClient.pause()
     
-    def _radioPlay(self):
+    def _radioPlay(self, announceChannel = False):
         if self.radioState is _RadioState.BLUETOOTH:
             self.logger.info("Not playing, bluetooth is active!")
             return
@@ -282,6 +286,15 @@ class Coordinator(object):
             return
         self.gpioController.setNeedlelight(PowerState.ON)
         self.mpdClient.setVolume(self.currentVolume)
+        if announceChannel:
+            channelName = self.channels[self.currentChannel]
+            lang='de-de'
+            if channelName.find('|lang=') >= 0:
+                channelName = channelName.split('|lang=')
+                lang = channelName[1]
+                channelName = channelName[0]
+                
+            self.textToSpeech.speak(text=channelName,lang=lang);
         self.mpdClient.playTitle(self.currentChannel)
     
     def isPoweredOn(self):
@@ -334,6 +347,11 @@ class Coordinator(object):
             self.gpioController.setStereolight(PowerState.OFF)  
         elif (state == _RadioState.BLUETOOTH):
             self.gpioController.setStereoBlink(active=True, pause_s=1)          
+    
+    def playSingleFile(self, file):
+        self.logger.debug("playSingleFile('%s')" % file)
+        with self.playStateCnd:
+            self.mpdClient.playSingleFile(file)
     
     def currentlyPlaying(self, mpdPlaying = None, channel = None, volume = None, currentSongInfo = None):
         self.logger.debug("updating coordinator-state...")

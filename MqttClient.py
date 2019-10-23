@@ -107,12 +107,12 @@ class MqttClient(object):
             self.client.publish(self.config.mqtt_base_topic + "/channel", payload=str(channel))
             infoDict['channel'] = channel
             infoDict['numChannelsInPlaylist'] = numChannelsInPlaylist 
-            if 'name' in infoDict:
-                infoDict['name'] = infoDict['name']
-            else:
+            if 'name' not in infoDict:
                 infoDict['name'] = "N/A"
             if 'title' in infoDict:
-                infoDict['title'] = infoDict['title']
+                title = infoDict['title']
+                if title.find('|lang=') >= 0:
+                    infoDict['title'] = title.split('|lang=')[0]
             else:
                 infoDict['title'] = "N/A" 
             
