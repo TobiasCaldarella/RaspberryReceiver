@@ -5,6 +5,7 @@ Created on 11.08.2019
 '''
 import lirc
 import threading
+from Configuration import _RadioPowerState
 
 class IR(object):
     '''
@@ -68,7 +69,7 @@ class IR(object):
         self.logger.debug("Two digit input cancelled")
         if self.two_digit_timeout:
             self.two_digit_timeout.cancel()
-        #self.coordinator.invertNeedleLightState(restore=True)
+        self.coordinator.invertNeedleLightState(restore=True)
         self.firstDigit = None
         self.twoDigitHandler = self.setChannelAtCoordinator
     
@@ -77,7 +78,7 @@ class IR(object):
         self.firstDigit = None
         if self.two_digit_timeout:
             self.two_digit_timeout.cancel()
-        #self.coordinator.invertNeedleLightState(restore=True)
+        self.coordinator.invertNeedleLightState(restore=True)
         self.twoDigitHandler(input)
         self.twoDigitHandler = self.setChannelAtCoordinator
     
@@ -95,7 +96,7 @@ class IR(object):
             #t.start()
             if "power" in code:
                 self.logger.info("LIRC: 'power'")
-                if coordinator.isPoweredOn() is True:
+                if coordinator.powerState == _RadioPowerState.POWERED_UP or coordinator.powerState == _RadioPowerState.POWERING_DOWN:
                     coordinator.powerOff()
                 else:
                     coordinator.powerOn()
@@ -171,7 +172,7 @@ class IR(object):
                     if self.firstDigit is None:
                         self.logger.debug("LIRC: first digit: %i" % digit)
                         self.firstDigit = digit
-                        #self.coordinator.invertNeedleLightState()
+                        self.coordinator.invertNeedleLightState()
                         self.two_digit_timeout = threading.Timer(2.0, self.do_two_digit_timeout)
                         self.two_digit_timeout.start()
                     else:

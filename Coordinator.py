@@ -12,7 +12,8 @@ import time
 from Bluetooth import Bluetooth
 import urllib.request 
 from time import sleep
-from Configuration import _RadioState
+from Configuration import _RadioState, _RadioPowerState
+import queue
 
 class Coordinator(object):
     '''
@@ -35,13 +36,29 @@ class Coordinator(object):
         self.currentChannel = 0
         self.needleStepsPerChannel = 0
         self.radioState = _RadioState.STOPPED
-        self.poweredOn = False
+        self.powerState = _RadioPowerState.POWERED_DOWN
         self.currentVolume = 70
         self.sleepTimer = None
         self.playStateCnd = threading.Condition()
         self.currentSongInfo = {}
         self.textToSpeech = None
+        self.workerThread = threading.Thread(target=self.do_work, name="Coordinator.WorkerThread")
+        self.running = False
+        self.job_queue = queue.Queue(30)
         
+    def do_work(self):
+        try:
+            self.logger.debug("Worker thread started")
+            while self.running:
+                self.logger.debug("Worker thread waiting for jobs in queue")
+                job = self.job_queue.get(block=True)
+                if job is not None:
+                    self.logger.debug("Running job: '%s'" % job)
+                    job()
+        except:
+            self.logger.error("Exception in worker thread: '%s'")
+        self.logger.debug("Worker thread stopped") 
+    
     def connectWifi(self):
         self.gpioController.setStereoBlink(active=True, pause_s=2)
         pass
@@ -57,57 +74,81 @@ class Coordinator(object):
         self.mqttClient.reconnect()
         return True
 
+    def _putJobIntoQueue(self, job):
+        try:
+            self.job_queue.put(job, True, 2)
+        except:
+            self.logger.error("Could not put job into queue, queue full?")
+    
     def powerOff(self):
         self.logger.info("Power down requested...")
+        self._putJobIntoQueue(self._powerOff)
+        
+    def _powerOff(self):
+        self.logger.info("Power down sequence started")
         with self.playStateCnd:
+            if not self.isPoweredOn():
+                self.logger.debug("Not powered up, ignoring request")
+                return
+            self.powerState = _RadioPowerState.POWERING_DOWN
             if self.sleepTimer:
                 self.sleepTimer.cancel()
-            if self.poweredOn is False:
-                return
             self.bluetooth.disable(wait_for_stop = False)
             self.wheel.disable()
-            self.gpioController.disable_power_button()
             self._radioStop()
-            self.poweredOn = False
+            self.mpdClient.stopQueueHandler()
             self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd) # bluetooth and radio are stopped, wait for play state to become stopped
-            self.logger.info("Powering down...")
+            self.logger.info("Powering down amp...")
             self.gpioController.setStereolight(PowerState.OFF)
             self.gpioController.setBacklight(PowerState.OFF)
             self.gpioController.setNeedlelight(PowerState.OFF)
             self.gpioController.setPowerAndSpeaker(PowerState.OFF)
             self.gpioController.setStereoBlink(active=True, pause_s=10)
             self.mqttClient.publish_power_state(PowerState.OFF)
-            self.gpioController.enable_power_button()
+            self.powerState = _RadioPowerState.POWERED_DOWN
     
     def powerOn(self):
-        self.logger.info("Power up requested...")
+        self.logger.info("Power on requested...")
+        self._putJobIntoQueue(self._powerOn)
+    
+    def _powerOn(self):
+        self.logger.info("Power up sequence started...")
         with self.playStateCnd:
             if self.sleepTimer:
                 self.sleepTimer.cancel()
-            if self.poweredOn is True:
+            if self.powerState is not _RadioPowerState.POWERED_DOWN:
+                self.logger.debug("Not powered down, ignoring request")
                 return
-            self.poweredOn = True
-            self.logger.info("Powering up...")
-            self.gpioController.disable_power_button()
+            self.logger.info("Powering up amp...")
+            self.powerState = _RadioPowerState.POWERING_UP
             self.gpioController.setBacklight(PowerState.ON)
             self.gpioController.setStereolight(PowerState.OFF)
             self.gpioController.setPowerAndSpeaker(PowerState.ON)
             if self.mqttClient is not None:
                 self.mqttClient.publish_power_state(PowerState.ON)
+            self.mpdClient.startQueueHandler()
             self._radioStop()
             self.radioState = _RadioState.STOPPED
-            self.gpioController.enable_power_button()
-            self.mpdClient.playSingleFile("silence.mp3")
+            self.mpdClient.playSingleFile("/opt/RaspberryRadio/resources/silence.mp3")
+            self.mpdClient.setVolume(self.currentVolume) # set this before accepting any feedback from mpd
             self.needle.setNeedleForChannel(ch=self.currentChannel, cb=self.radioPlay)
             self.bluetooth.enable()
             self.wheel.enable()
+            self.powerState = _RadioPowerState.POWERED_UP
         self.mpdClient.notifyCoordinator = True # now we are ready to receive status updates
+        self.mpdClient.setVolume(self.currentVolume) # and this just triggers an update of the mpd state so we can get a current status now
             
     def sleep(self, time_m):
+        self.logger.info("Sleep requested...")
+        self._putJobIntoQueue(lambda: self._sleep(time_m))
+    
+    def _sleep(self, time_m):
         with self.playStateCnd:
+            if not self.isPoweredOn():
+                self.logger.debug("Not powered up, ignoring request")
+                return
             if self.sleepTimer:
                 self.sleepTimer.cancel()
-            self.lightSignal()
             
             if time_m > 0:
                 self.logger.info("Sleep set to %i minutes" % time_m)
@@ -154,6 +195,8 @@ class Coordinator(object):
         self.gpioController.enable_power_button()
         self.ir.enable()
         self.gpioController.setStereoBlink(active=True, pause_s=10)
+        self.running = True
+        self.workerThread.start()
         self.sendStateToMqtt()
         
     def downloadPlaylist(self):
@@ -189,6 +232,10 @@ class Coordinator(object):
                     self.gpioController.setNeedlelight(PowerState.ON)
     
     def setChannel(self, channel, relative = False, setIfPowerOff = False):
+        self.logger.info("channel change requested (channel=%i, relative = %s)" % (channel, relative))
+        self._putJobIntoQueue(lambda: self._setChannel(channel, relative, setIfPowerOff))
+        
+    def _setChannel(self, channel, relative = False, setIfPowerOff = False):
         with self.playStateCnd:
             if self.radioState == _RadioState.BLUETOOTH:
                 self.logger.debug("Bluetooth active, not changing channel")
@@ -200,7 +247,7 @@ class Coordinator(object):
                 newChannel = channel
                 
             if (newChannel < (self.numChannels-1)) and (newChannel >= 0):
-                if not self.poweredOn:
+                if not self.isPoweredOn():
                     if setIfPowerOff:
                         self.logger.info("not powered on, only setting selected channel %i" % newChannel)
                         self.currentChannel = newChannel
@@ -208,7 +255,7 @@ class Coordinator(object):
                         self.logger.info("not powered on, not setting channel")
                     return
                 self.logger.info("setting channel to %i" % newChannel)
-                self._radioStop(False)
+                self.__radioStop(needleLightOff=False)
                 self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
                 self.currentChannel = newChannel
                 self.gpioController.setNeedlelight(PowerState.ON)
@@ -216,10 +263,14 @@ class Coordinator(object):
             else:
                 self.lightSignal()
                 self.logger.info("Invalid channel requested")
-                
+    
     def volumeUp(self):
+        self.logger.info("volumeUp requested")
+        self._putJobIntoQueue(self._volumeUp)
+                
+    def _volumeUp(self):
         with self.playStateCnd:
-            if not self.poweredOn:
+            if not self.isPoweredOn():
                 self.logger.info("not powered on, not changing volume")
                 return
             vol = self.currentVolume
@@ -227,10 +278,14 @@ class Coordinator(object):
             if vol > 100:
                 vol = 100
             self.mpdClient.setVolume(vol)
-
+            
     def volumeDown(self):
+        self.logger.info("volumeDown requested")
+        self._putJobIntoQueue(self._volumeDown)
+    
+    def _volumeDown(self):
         with self.playStateCnd:
-            if not self.poweredOn:
+            if not self.isPoweredOn():
                 self.logger.info("not powered on, not changing volume")
                 return
             vol = self.currentVolume
@@ -240,48 +295,62 @@ class Coordinator(object):
             self.mpdClient.setVolume(vol)
     
     def setVolume(self, vol):
+        self.logger.info("setVolume requested (volume = %i)" % vol)
+        self._putJobIntoQueue(lambda: self._setVolume(vol))
+    
+    def _setVolume(self, vol):
         with self.playStateCnd:
-            if not self.poweredOn:
-                self.logger.info("not powered on, not setting volume")
-                return
             if vol < 0 or vol > 100:
                 self.logger.warn("Received invalid volume: %i", vol)
             else:
-                self.mpdClient.setVolume(vol)
+                if self.isPoweredOn():
+                    self.mpdClient.setVolume(vol)
                 self.currentVolume = vol
     
-    def radioStop(self, waitForStop = True):
+    def radioStop(self):
+        self.logger.info("radioStop requested")
+        self._putJobIntoQueue(self._radioStop)
+    
+    def _radioStop(self, waitForStop = True):
         with self.playStateCnd:
-            self._radioStop()
+            self.__radioStop()
             if waitForStop:
                 self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
-                
+
     def radioRestart(self):
+        self.logger.info("RadioRestart requested")
+        self._putJobIntoQueue(self._radioRestart)           
+                
+    def _radioRestart(self):
         with self.playStateCnd:
-            self._radioPause()
-            self._radioPlay()
+            self.__radioPause()
+            self.__radioPlay()
     
-    def _radioStop(self, needleLightOff=True):
+    def __radioStop(self, needleLightOff=True):
         self.mpdClient.stop()
         if needleLightOff:
             self.gpioController.setNeedlelight(PowerState.OFF)
         
     def radioPlay(self, announceChannel = False):
-        with self.playStateCnd:
-            self._radioPlay(announceChannel=announceChannel)
+        self.logger.info("RadioPlay requested (announceChannel='%s')" % announceChannel)
+        self._putJobIntoQueue(lambda: self._radioPlay(announceChannel))
     
-    def _radioPause(self):
-        if not self.poweredOn:
+    def _radioPlay(self, announceChannel = False):
+        with self.playStateCnd:
+            self.__radioPlay(announceChannel=announceChannel)
+    
+    def __radioPause(self):
+        if not self.isPoweredOn():
             self.logger.error("Cannot send pause if not powered up")
             return
         self.gpioController.setNeedlelight(PowerState.OFF)
         self.mpdClient.pause()
     
-    def _radioPlay(self, announceChannel = False):
+    def __radioPlay(self, announceChannel = False):
         if self.radioState is _RadioState.BLUETOOTH:
             self.logger.info("Not playing, bluetooth is active!")
             return
-        if not self.poweredOn:
+        if not self.isPoweredOn():
             self.logger.error("Will not start play, not in powered up state")
             return
         self.gpioController.setNeedlelight(PowerState.ON)
@@ -298,7 +367,7 @@ class Coordinator(object):
         self.mpdClient.playTitle(self.currentChannel)
     
     def isPoweredOn(self):
-        return self.poweredOn
+        return (self.powerState is _RadioPowerState.POWERED_UP)
     
     def waitForRadioState(self, desiredState, lock=None):
         if lock is None:
@@ -317,11 +386,12 @@ class Coordinator(object):
             self.logger.debug("radioState is '%s'" % self.radioState)
         return True
     
+    #todo make this async?
     def bluetoothPlaying(self, active):
         self.logger.info("Coordinator.bluetoothPlaying called with active = '%i'" % active)
         with self.playStateCnd:
             if active is True and self.radioState is not _RadioState.BLUETOOTH:
-                if not self.poweredOn:
+                if not self.isPoweredOn():
                     self.logger.error("Cannot enable bluetooth if not if not powered up!")
                     return
                 self._radioStop()
@@ -348,10 +418,12 @@ class Coordinator(object):
         elif (state == _RadioState.BLUETOOTH):
             self.gpioController.setStereoBlink(active=True, pause_s=1)          
     
+    #todo: make this async
     def playSingleFile(self, file):
         self.logger.debug("playSingleFile('%s')" % file)
         with self.playStateCnd:
-            self.mpdClient.playSingleFile(file)
+            if self.isPoweredOn():
+                self.mpdClient.playSingleFile(file)
     
     def currentlyPlaying(self, mpdPlaying = None, channel = None, volume = None, currentSongInfo = None):
         self.logger.debug("updating coordinator-state...")
@@ -389,7 +461,7 @@ class Coordinator(object):
                     brightness = self.gpioController.backlightIntensity
                 else:
                     brightness = None
-                poweredOn = self.poweredOn
+                poweredOn = self.isPoweredOn()
                     
             self.mqttClient.pubInfo(radioState, currentChannel+1, currentVolume, currentSongInfo, numChannels, brightness, poweredOn)  # human-readable channel
 

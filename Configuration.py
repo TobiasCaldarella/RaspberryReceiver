@@ -9,6 +9,12 @@ class _RadioState(Enum):
     STOPPED = 0
     PLAYING = 1
     BLUETOOTH = 2
+    
+class _RadioPowerState(Enum):
+    POWERED_DOWN = 0
+    POWERING_UP = 1
+    POWERED_UP = 2
+    POWERING_DOWN = 3
 
 class Configuration(object):
     '''
@@ -61,6 +67,7 @@ class Configuration(object):
         
         # text to speech options
         self.tts_api_key = '88ecced13cfe4f2b938c13e5dfdf1575'
+        self.tts_cache_dir = '/var/cache/RaspberryRadio/tts'
         
         # misc options
         self.backlight_default_brightness = 100

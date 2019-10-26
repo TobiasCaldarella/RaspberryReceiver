@@ -10,6 +10,7 @@ import time
 import threading
 import Coordinator
 import traceback
+from Configuration import _RadioPowerState
 
 class PowerState(Enum):
     ON = 1
@@ -79,10 +80,12 @@ class GpioController(object):
                 self.logger.debug("Speakers off")
                 time.sleep(0.5)
             GPIO.output(self.gpio_pwr, GPIO.HIGH) # active on low!
+            self.logger.info("Powered down")
             time.sleep(1.0)
         else:
             GPIO.output(self.gpio_pwr, GPIO.LOW) # active on low!
-            time.sleep(2.0)
+            self.logger.info("Powered up")
+            time.sleep(3.0)
             if self.gpio_speakers is not None:
                 GPIO.output(self.gpio_speakers, GPIO.HIGH)
                 self.logger.debug("Speakers on")
@@ -196,7 +199,7 @@ class GpioController(object):
             self.logger.debug("Spurious power button interrupt, ignored.")
             return
         self.logger.debug("Power button pressed!")
-        if self.coordinator.isPoweredOn() is True:
+        if self.coordinator.powerState == _RadioPowerState.POWERED_UP or self.coordinator.powerState == _RadioPowerState.POWERING_DOWN:
             self.coordinator.powerOff()
         else:
             self.coordinator.powerOn()
