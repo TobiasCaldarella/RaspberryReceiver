@@ -131,10 +131,11 @@ class Coordinator(object):
             self.radioState = _RadioState.STOPPED
             self.mpdClient.playSingleFile("/opt/RaspberryRadio/resources/silence.mp3")
             self.mpdClient.setVolume(self.currentVolume) # set this before accepting any feedback from mpd
-            self.needle.setNeedleForChannel(ch=self.currentChannel, cb=self.radioPlay)
+            self.needle.setNeedleForChannel(ch=self.currentChannel, relative=False, drivingThread=True, mtx=self.playStateCnd)
+            self.powerState = _RadioPowerState.POWERED_UP
+            self.radioPlay(announceChannel=False) # put this into queue 
             self.bluetooth.enable()
             self.wheel.enable()
-            self.powerState = _RadioPowerState.POWERED_UP
         self.mpdClient.notifyCoordinator = True # now we are ready to receive status updates
         self.mpdClient.setVolume(self.currentVolume) # and this just triggers an update of the mpd state so we can get a current status now
             
@@ -233,36 +234,35 @@ class Coordinator(object):
     
     def setChannel(self, channel, relative = False, setIfPowerOff = False):
         self.logger.info("channel change requested (channel=%i, relative = %s)" % (channel, relative))
-        self._putJobIntoQueue(lambda: self._setChannel(channel, relative, setIfPowerOff))
+        with self.playStateCnd:
+            if self.needle.isMoving:
+                self.logger.debug("Needle already moving, only updating needle destination")
+                self.needle.setNeedleForChannel(ch=channel, relative=relative, drivingThread=False, mtx=self.playStateCnd)
+            else:
+                self._putJobIntoQueue(lambda: self._setChannel(channel, relative, setIfPowerOff))
         
     def _setChannel(self, channel, relative = False, setIfPowerOff = False):
         with self.playStateCnd:
             if self.radioState == _RadioState.BLUETOOTH:
                 self.logger.debug("Bluetooth active, not changing channel")
                 return
-            
-            if relative is True:
-                newChannel = self.currentChannel + channel
-            else:
-                newChannel = channel
                 
-            if (newChannel < (self.numChannels-1)) and (newChannel >= 0):
-                if not self.isPoweredOn():
-                    if setIfPowerOff:
-                        self.logger.info("not powered on, only setting selected channel %i" % newChannel)
-                        self.currentChannel = newChannel
-                    else:
-                        self.logger.info("not powered on, not setting channel")
-                    return
-                self.logger.info("setting channel to %i" % newChannel)
-                self.__radioStop(needleLightOff=False)
-                self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
-                self.currentChannel = newChannel
-                self.gpioController.setNeedlelight(PowerState.ON)
-                self.needle.setNeedleForChannel(ch=self.currentChannel,cb=lambda: self.radioPlay(announceChannel=True))
-            else:
-                self.lightSignal()
-                self.logger.info("Invalid channel requested")
+            if not self.isPoweredOn():
+                if setIfPowerOff:
+                    self.logger.info("not powered on, only setting selected channel %i" % channel)
+                    self.currentChannel = channel
+                else:
+                    self.logger.info("not powered on, not setting channel")
+                return
+            self.logger.info("setting channel to %i, relative %s" % (channel, relative))
+            self.__radioStop(needleLightOff=False)
+            self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
+            self.gpioController.setNeedlelight(PowerState.ON)
+            # the needle periodically unlocks the mtx to allow other threads to do stuff
+            # get new current channel from needle since it collected all the updates 
+            # that occured in the meantime
+            self.currentChannel = self.needle.setNeedleForChannel(ch=channel, relative=relative, drivingThread=True, mtx=self.playStateCnd)
+            self.__radioPlay(announceChannel=True)
     
     def volumeUp(self):
         self.logger.info("volumeUp requested")
@@ -418,12 +418,18 @@ class Coordinator(object):
         elif (state == _RadioState.BLUETOOTH):
             self.gpioController.setStereoBlink(active=True, pause_s=1)          
     
+    def speak(self, text, lang):
+        self.logger.debug("Speak '%s', lang '%s'" % (text, lang))
+        self._putJobIntoQueue(lambda: self.textToSpeech.speak(text, lang))
+    
     #todo: make this async
     def playSingleFile(self, file):
         self.logger.debug("playSingleFile('%s')" % file)
         with self.playStateCnd:
             if self.isPoweredOn():
                 self.mpdClient.playSingleFile(file)
+            else:
+                self.logger.info("Not powered on, cannot play!")
     
     def currentlyPlaying(self, mpdPlaying = None, channel = None, volume = None, currentSongInfo = None):
         self.logger.debug("updating coordinator-state...")

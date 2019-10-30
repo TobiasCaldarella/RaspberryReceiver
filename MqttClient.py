@@ -234,6 +234,15 @@ class MqttClient(object):
                     self.coordinator.powerOn()
                 if commands['power'] == 'OFF':
                     self.coordinator.powerOff()
+            if 'speak' in commands:
+                if commands['speak'].find('|lang=') >= 0:
+                    langAndText = commands['speak'].split('|lang=')
+                    lang = langAndText[1]
+                    text = langAndText[0]
+                else:
+                    lang = 'de-de'
+                    text = commands['speak']
+                self.coordinator.speak(text, lang)
                     
         except ValueError:
             self.logger.warn("Invalid data over 'commands' topic received, must be a utf-8 json string with commands")

@@ -26,18 +26,15 @@ class Needle(object):
         self.pinD = config.gpio_needle_d
         self.time = config.needle_sleep_time
         self.logger = config.logger
-        self.lock = threading.Lock()
         self.numChannels = 0
         self.stepsPerChannel = 0
         self.leftMargin = config.needle_left_margin
         self.numSteps = config.needle_steps
         self.currentPosition = None
         self.desiredPosition = None
-        self.run = True
-        self.workerThread = Thread(target=self._workerFct)
-        self.semaphore = Semaphore(value=1)
+        self.desiredChannel = 0
         self.mtx = Lock()
-        self.callback = None
+        self.isMoving = False
 
         for pin in { self.pinA, self.pinB, self.pinC, self.pinD }:
             GPIO.setup(pin, GPIO.OUT)
@@ -49,47 +46,45 @@ class Needle(object):
         self.desiredPosition = 0 # move to leftmost position to be in defined position         
         self.stepsPerChannel = int((self.numSteps-self.leftMargin)/self.numChannels)
         self.logger.debug("%i needleStepsPerChannel" % self.stepsPerChannel)
-        self.workerThread.start() # will adjust the needle immediately since semaphore is initially in released state
-        # block until needle is in position
-        while(self.currentPosition != self.desiredPosition):
-            sleep(0.1)
+        self.setNeedleForChannel(ch=None, relative=False, drivingThread=True, mtx=None) # ch=None since we explicitly set the position before
         
-    def stop(self):
-        self.logger.debug("waiting for worker thread to stop...")
-        self.run = False
-        self.semaphore.release()
-        self.workerThread.join()
-        self.logger.debug("...thread stopped!")
-        
-    def setNeedleForChannel(self, ch: int, cb=None):   
-        if ch < 0 or ch > self.numChannels:
+    def setNeedleForChannel(self, ch, relative, drivingThread, mtx):  
+        #eventually return channel to see if it changed in the meantime? 
+        if relative is True:
+            ch = self.desiredChannel + ch
+        if ch is not None:
+            self.logger.debug("Setting needle to channel %i (absolute)", ch)
+        if ch is not None and (ch < 0 or ch >= self.numChannels):
             self.logger.warn("setNeedleForChannel(%i): invalid channel" % ch)
-            return
+            return self.desiredChannel
         
-        with self.mtx:
+        if drivingThread:
+            if self.isMoving:
+                self.logger.error("Already moving, refusing another drivingThread!")
+                return self.desiredChannel
+            self.isMoving = True
+        
+        if ch is not None:
             self.desiredPosition = (ch * self.stepsPerChannel) + self.leftMargin
-            self.logger.debug("needle requested at channel %i. Current: %i target: %i" % (ch, self.currentPosition, self.desiredPosition))
-            self.callback = cb
-            self.semaphore.release()
-    
-    def _workerFct(self):
-        self.logger.debug("Worker thread started")
-        while self.run:
-            self.logger.debug("...waiting for needle desired position update...")
-            self.semaphore.acquire()
-            self.logger.debug("got update")
-            with self.mtx:
-                while (self.currentPosition != self.desiredPosition):
-                    self.mtx.release()
-                    self._adjustNeedle()
-                    self.mtx.acquire()
-                if self.callback:
-                    self.logger.debug("needle in desired position, issuing callback")
-                    self.callback()
-                    self.callback = None
+            self.desiredChannel = ch
+        else:
+            ch = -1
+        self.logger.debug("needle requested at channel %i. Current: %i target: %i" % (ch, self.currentPosition, self.desiredPosition))
+        if drivingThread is True:
+            self.logger.debug("we are driving thread, start moving")
+            while (self.currentPosition != self.desiredPosition):
+                if mtx is not None:
+                    mtx.release()
+                self._adjustNeedle()
+                if mtx is not None:
+                    mtx.acquire()
                     
-        self.logger.debug("Worker thread ended")
-
+            self.isMoving = False
+            self.logger.debug("needle in desired position, exiting")
+        else:
+            self.logger.debug("not driving thread, updated position and that's it for now")
+        return self.desiredChannel
+    
     def _adjustNeedle(self):
         self.logger.info("Moving needle from %i to %i..." % (self.currentPosition, self.desiredPosition))
         curDesiredPosition = self.desiredPosition

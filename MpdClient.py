@@ -235,6 +235,7 @@ class MpdClient(object):
                     self.client.load(url)
                     self.client.single(1)
                     self.client.consume(0)
+                    self.client.repeat(1)
                     return True
             except:
                 self.logger.error("Error loading '%s', attempt %i/10" % (url,i))
@@ -319,6 +320,7 @@ class MpdClient(object):
             if resumeRadio:
                 self.logger.debug("Resuming radio")
                 self.coordinator.radioPlay()
+                self.coordinator.waitForStatus('started', 30)
             else:
                 self.logger.debug("Not resuming radio")
             # todo: reenable bluetooth?
