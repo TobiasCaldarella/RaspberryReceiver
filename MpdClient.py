@@ -119,7 +119,7 @@ class MpdClientEventListener(object):
                     self.client.pause()
                     self.client.play()
                 else:
-                    self.config.error("Not restarting, playback failed, already restarted @%i" % alreadyRestarted)
+                    self.logger.error("Not restarting, playback failed, already restarted @%i" % alreadyRestarted)
                     self.status['error'] = True
             
             if self.coordinator:
