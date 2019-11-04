@@ -73,13 +73,13 @@ class IR(object):
         self.firstDigit = None
         self.twoDigitHandler = self.setChannelAtCoordinator
     
-    def finish_two_digit_input(self, input):
-        self.logger.debug("Two digit input finished: '%i'" % input)
+    def finish_two_digit_input(self, value):
+        self.logger.debug("Two digit input finished: '%i'" % value)
         self.firstDigit = None
         if self.two_digit_timeout:
             self.two_digit_timeout.cancel()
         self.coordinator.invertNeedleLightState(restore=True)
-        self.twoDigitHandler(input)
+        self.twoDigitHandler(value)
         self.twoDigitHandler = self.setChannelAtCoordinator
     
     def do_getCode(self):

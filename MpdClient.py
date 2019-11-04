@@ -320,7 +320,7 @@ class MpdClient(object):
             if resumeRadio:
                 self.logger.debug("Resuming radio")
                 self.coordinator.radioPlay()
-                self.coordinator.waitForStatus('started', 30)
+                #self.listener.waitForStatus('started', 30)
             else:
                 self.logger.debug("Not resuming radio")
             # todo: reenable bluetooth?
