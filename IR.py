@@ -74,6 +74,9 @@ class IR(object):
         self.twoDigitHandler = self.setChannelAtCoordinator
     
     def finish_two_digit_input(self, value):
+        if value is None:
+            self.logger.debug("Two digit input finished without number")
+            return
         self.logger.debug("Two digit input finished: '%i'" % value)
         self.firstDigit = None
         if self.two_digit_timeout:
