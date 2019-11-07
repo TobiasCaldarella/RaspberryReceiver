@@ -182,7 +182,8 @@ class MpdClientEventListener(object):
     def stopListener(self):
         self.listen = False
         self.disconnect()
-        self.listenerThread.join(timeout=2)
+        if self.listenerThread.is_alive():
+            self.listenerThread.join(timeout=2)
 
 
 class MpdClient(object):
