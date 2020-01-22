@@ -9,12 +9,30 @@ import Configuration
 import time
 import threading
 import Coordinator
-import traceback
+import Adafruit_PCA9685
 from Configuration import _RadioPowerState
 
 class PowerState(Enum):
     ON = 1
     OFF = 2
+
+    
+class Light(object):
+    
+    def __init__(self, ctr, pin, fadeSteps):
+        self.ctr = ctr
+        self.pin = pin
+        self.mtx = threading.Lock()
+        self.fadeSteps = fadeSteps
+        self.state = PowerState.OFF
+        self.blinking = False
+    
+    def on(self):
+        if self.state is PowerState.ON:
+            return
+        
+        self.ctr.fade(self.pin, 0, 100, self.fadeSteps)
+        
 
 class GpioController(object):
     '''
@@ -29,33 +47,30 @@ class GpioController(object):
         '''
         self.logger = config.logger
         self.logger.info("GpioController initializing...")
-        self.gpio_pwr = config.gpio_power
+        self.pin_pwr = config.pin_power
         self.gpio_pwr_btn = config.gpio_pwr_btn
-        self.gpio_backlight = config.gpio_backlight
-        self.gpio_needle = config.gpio_needle
-        self.gpio_stereo = config.gpio_stereo
-        self.gpio_speakers = config.gpio_speakers
+        self.pin_backlight = config.gpio_backlight
+        self.pin_needle = config.pin_needle
+        self.pin_stereo = config.pin_stereo
+        self.pin_speakers = config.pin_speakers
+        
+        self.pwm = Adafruit_PCA9685.PCA9685(address=0x40)
+        self.pwm.set_pwm_freq(5000)
+        
         self.coordinator = coordinator
         coordinator.gpioController = self
         
-        for pin in [ self.gpio_backlight, self.gpio_needle, self.gpio_stereo, self.gpio_speakers ]:
-            if pin is not None:
-                GPIO.setup(pin, GPIO.OUT, initial = GPIO.LOW)
+        #for pin in [ self.gpio_backlight, self.gpio_needle, self.gpio_stereo, self.gpio_speakers ]:
+        #    if pin is not None:
+        #        GPIO.setup(pin, GPIO.OUT, initial = GPIO.LOW)
             
-        for pin in [ self.gpio_pwr ]:
-            if pin is not None:
-                GPIO.setup(pin, GPIO.OUT, initial = GPIO.HIGH)
+        #for pin in [ self.gpio_pwr ]:
+        #    if pin is not None:
+        #        GPIO.setup(pin, GPIO.OUT, initial = GPIO.HIGH)
         
         for pin in [ self.gpio_pwr_btn ]:
             if pin is not None:
                 GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            
-        if self.gpio_backlight is not None:
-            self.backlightPwm = GPIO.PWM(self.gpio_backlight, 500)
-            self.backlightPwm.start(0)
-        if self.gpio_stereo is not None:
-            self.stereoPwm = GPIO.PWM(self.gpio_stereo, 500)
-            self.stereoPwm.start(0)
         
         self.needleLightState = PowerState.OFF
         self.backlightState = PowerState.OFF
@@ -72,54 +87,78 @@ class GpioController(object):
         self.stereoBlinkThread.start()
         self.logger.info("GpioController initialized")
         
+    def pwmAsGpio(self, pin, state):
+        if state is GPIO.HIGH:
+            self.pwm.set_pwm(pin, 0, 0)
+        else:
+            self.pwm.set_pwm(pin, 0, 4095)
+            
+    def pwmPercent(self, pin, onPercent):
+        self.pwm.set_pwm(pin, 4095-(onPercent/100*4095), 4095)
+        
     def setPowerAndSpeaker(self, state: PowerState):
         # relais is active on low!
         if state is PowerState.OFF:
             if self.gpio_speakers is not None:
-                GPIO.output(self.gpio_speakers, GPIO.LOW)
+                self.pwmAsGpio(self.pin_speakers, GPIO.LOW)
                 self.logger.debug("Speakers off")
                 time.sleep(0.5)
-            GPIO.output(self.gpio_pwr, GPIO.HIGH) # active on low!
+            self.pwmAsGpio(self.pin_pwr, GPIO.LOW)
             self.logger.info("Powered down")
             time.sleep(1.0)
         else:
-            GPIO.output(self.gpio_pwr, GPIO.LOW) # active on low!
+            self.pwmAsGpio(self.pin_pwr, GPIO.HIGH)
             self.logger.info("Powered up")
             time.sleep(3.0)
             if self.gpio_speakers is not None:
-                GPIO.output(self.gpio_speakers, GPIO.HIGH)
+                self.pwmAsGpio(self.pin_speakers, GPIO.HIGH)
                 self.logger.debug("Speakers on")
         
-    def dimmLight(self, state: PowerState, pwm, steps=10):
+    def dimmLight(self, state: PowerState, pin, steps=10):
         if state == PowerState.ON:
             if steps > 0:
                 r = range(0, 100, int(100/steps))
                 for dc in r:
-                    pwm.ChangeDutyCycle(dc)
+                    self.pwmPercent(pin, dc)
                     time.sleep(0.05)
-            pwm.ChangeDutyCycle(100)
+                self.pwmPercent(pin, 100)
         else:
             if steps > 0:
-                r = range(100, 0, -int(100/steps))
+                r = range(4095, 0, -int(4095/steps))
                 for dc in r:
-                    pwm.ChangeDutyCycle(dc)
+                    self.pwmPercent(pin, dc)
                     time.sleep(0.05)
-            pwm.ChangeDutyCycle(0)
-            
-    def dimmLightNew(self, pwm, current, target, steps=10):
-        if pwm is None:
+            self.pwmPercent(pin, 0)
+    
+    def fade(self, pin, current, target, steps):
+        if pin is None:
             return
         if current == target:
             return
-        
+
         if steps > 0:
             step = (target - current)/steps
             while steps > 0:
                 current = current + step
-                pwm.ChangeDutyCycle(current)
+                self.pwmPercent(pin, current)
                 time.sleep(0.05)
                 steps = steps - 1
-        pwm.ChangeDutyCycle(target)
+        self.pwmPercent(pin, target)
+    
+    def dimmLightNew(self, pin, current, target, steps=10):
+        if pin is None:
+            return
+        if current == target:
+            return
+
+        if steps > 0:
+            step = (target - current)/steps
+            while steps > 0:
+                current = current + step
+                self.pwmPercent(pin, current)
+                time.sleep(0.05)
+                steps = steps - 1
+        self.pwmPercent(pin, target)
         
     def setBacklight(self, state = None, intensity = None):
         if self.gpio_backlight is None:
@@ -135,7 +174,7 @@ class GpioController(object):
         if state is not PowerState.ON:
             intensity = 0
             
-        self.dimmLightNew(self.backlightPwm, self.backlightIntensity, intensity)
+        self.dimmLightNew(self.pin_backlight, self.backlightIntensity, intensity)
         self.backlightIntensity = intensity
         self.backlightState = state
         
@@ -152,9 +191,9 @@ class GpioController(object):
                 intensity = 0
                 
             if blinking is False:
-                self.dimmLightNew(self.stereoPwm, self.stereoLightIntensity, intensity, 0) # 0steps
+                self.dimmLightNew(self.pin_stereo, self.stereoLightIntensity, intensity, 0) # 0steps
             else:
-                self.dimmLightNew(self.stereoPwm, self.stereoLightIntensity, intensity) # default number of steps
+                self.dimmLightNew(self.pin_stereo, self.stereoLightIntensity, intensity) # default number of steps
             
             self.stereoLightState = state
             self.stereoLightIntensity = intensity
@@ -183,7 +222,8 @@ class GpioController(object):
             gpioState = GPIO.HIGH
         else:
             gpioState = GPIO.LOW
-        GPIO.output(self.gpio_needle, gpioState)
+            
+        self.pwmAsGpio(self.pin_needle, gpioState)
         self.needleLightState = state
             
     def enable_power_button(self):
