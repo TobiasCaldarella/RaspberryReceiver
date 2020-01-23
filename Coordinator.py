@@ -5,7 +5,7 @@ Created on 08.08.2019
 '''
 from GpioController import PowerState
 from MpdClient import MpdClient
-from IR import IR
+#from IR import IR
 import threading
 from enum import Enum
 import time
@@ -129,7 +129,7 @@ class Coordinator(object):
             self.mpdClient.startQueueHandler()
             self._radioStop()
             self.radioState = _RadioState.STOPPED
-            self.mpdClient.playSingleFile("/opt/RaspberryRadio/resources/silence.mp3")
+            self.mpdClient.playSingleFile("/opt/RaspberryReceiver/resources/silence.mp3")
             self.mpdClient.setVolume(self.currentVolume) # set this before accepting any feedback from mpd
             self.needle.setNeedleForChannel(ch=self.currentChannel, relative=False, drivingThread=True, mtx=self.playStateCnd)
             self.powerState = _RadioPowerState.POWERED_UP
@@ -165,7 +165,9 @@ class Coordinator(object):
         self.gpioController.setStereoBlink(active=True, pause_s=0)
         # todo: maybe do this in background?
             
-        self.ir.connect()
+        if self.ir:
+            self.ir.connect()
+        
         self.connectWifi()
             
         # connect MPD client and load playlist
@@ -194,7 +196,8 @@ class Coordinator(object):
             self.mqttClient = None
             
         self.gpioController.enable_power_button()
-        self.ir.enable()
+        if self.ir:
+            self.ir.enable()
         self.gpioController.setStereoBlink(active=True, pause_s=10)
         self.running = True
         self.workerThread.start()
@@ -464,7 +467,7 @@ class Coordinator(object):
                 currentSongInfo = self.currentSongInfo
                 numChannels = self.numChannels
                 if self.gpioController is not None:
-                    brightness = self.gpioController.backlightIntensity
+                    brightness = self.gpioController.backLight.intensity
                 else:
                     brightness = None
                 poweredOn = self.isPoweredOn()

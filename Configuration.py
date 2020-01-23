@@ -25,7 +25,7 @@ class Configuration(object):
     def __init__(self):
         # Logging
         self.logfile = '/var/log/raspberryReceiver.log'
-        self.loglevel = 'DEBUG'
+        self.loglevel = 'INFO'
         self.logger = None
         
         # MQTT
@@ -61,7 +61,7 @@ class Configuration(object):
         self.gpio_needle_b = 17
         self.gpio_needle_c = 23
         self.gpio_needle_d = 27
-        self.needle_steps = 1000
+        self.needle_steps = 950
         self.needle_left_margin = 150
         self.needle_sleep_time = 0.002
         

@@ -92,14 +92,15 @@ class MpdClientEventListener(object):
                     self.config.logger.info("MPD playing currentSongInfo: %s" % json.dumps(currentSongInfo))
                     self.config.logger.debug("MPD playing stats: %s" % json.dumps(stat))                                 
                     playing = True
-                    if ('volume' not in stat or int(stat['volume']) is None):
+                    #if ('volume' not in stat or int(stat['volume']) is None):
+                    if (False):
                         self.config.logger.info("However, no volume control was available. Pause and restart, maybe soundcard/mixer was not ready?")
                         if alreadyRestarted < time.time()-10:
                             alreadyRestarted = time.time()
                             self.client.pause()
                             self.client.play()
                         else:
-                            self.config.warning("Not restarting after volume not in stat, already restarted @%i" % alreadyRestarted)
+                            self.config.logger.warning("Not restarting after volume not in stat, already restarted @%i" % alreadyRestarted)
                     break # can go and idle
                 else:
                     self.config.logger.debug("MPD not streaming (yet?)")
