@@ -101,7 +101,7 @@ class IR(object):
         self.logger.debug("...IR connected")
         with lirc.LircdConnection('RaspberryRadio', 'resources/lircrc', lirc.client.get_default_socket_path()) as conn:
             while self.run is True:
-                code = conn.readLine()
+                code = conn.readline()
                 self.logger.debug("got code from IR: '%s'" % code)
                 if self.enabled is not True:
                     self.logger.debug("IR not enabled, ignored")
