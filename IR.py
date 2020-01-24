@@ -5,6 +5,7 @@ Created on 11.08.2019
 '''
 import lirc
 import threading
+import multiprocessing
 from Configuration import _RadioPowerState
 
 class IR(object):
@@ -28,15 +29,20 @@ class IR(object):
         self.sleep_timeout = None
         self.twoDigitLock = threading.Lock()
         self.twoDigitHandler = self.setChannelAtCoordinator
+        self.codeQueue = multiprocessing.Queue()
+        self.lircProcess = multiprocessing.Process(target=self.p_nextcode,args=(self.codeQueue,))
        
     def connect(self):
         self.logger.debug("IR connecting...")
         self.run = True
+
         self.workerThread.start()
+        self.lircProcess.start()
         
     def disconnect(self):
         self.logger.debug("IR disconnecting...")
         self.run = False
+        self.lircProcess.terminate()
         lirc.deinit()
         if self.workerThread.join(timeout=10):
             self.logger.info("IR disconnected and stopped")
@@ -84,16 +90,22 @@ class IR(object):
         self.coordinator.invertNeedleLightState(restore=True)
         self.twoDigitHandler(value)
         self.twoDigitHandler = self.setChannelAtCoordinator
-    
+        
+    def p_nextcode(self, queue):
+        while True:
+            code = lirc.nextcode()
+            queue.put(code)
+            
     def do_getCode(self):
         coordinator = self.coordinator
         self.logger.debug("...IR connected")
         while self.run is True:
-            code = lirc.nextcode()
+            code = self.codeQueue.get()
+            self.logger.debug("got code from IR: '%s'" % code)
             if self.enabled is not True:
+                self.logger.debug("IR not enabled, ignored")
                 continue
             digit = None
-            self.logger.debug("got code from IR: '%s'" % code)
             #self.disable()
             #t = threading.Timer(0.2, self.enable)
             #t.start()
