@@ -22,7 +22,7 @@ class IR(object):
         coordinator.ir = self
         self.sockid = lirc.init('RaspberryRadio', 'resources/lircrc')
         self.workerThread = threading.Thread(target=self.do_getCode)
-        self.logger.debug("IR initialized")
+        self.logger.info("IR initialized")
         self.enabled = False
         self.firstDigit = None
         self.two_digit_timeout = None
@@ -50,11 +50,11 @@ class IR(object):
             self.logger.error("Error disconnecting IR!")
         
     def enable(self):
-        self.logger.debug("IR enabled")
+        self.logger.info("IR enabled")
         self.enabled = True
         
     def disable(self):
-        self.logger.debug("IR disabled")
+        self.logger.info("IR disabled")
         self.enabled = False
     
     def setChannelAtCoordinator(self, channel):
@@ -64,15 +64,15 @@ class IR(object):
     def do_two_digit_timeout(self):
         with self.twoDigitLock:
             if self.firstDigit is not None:
-                self.logger.debug("Two digit input timed out. Assuming %i" % self.firstDigit)
+                self.logger.info("Two digit input timed out. Assuming %i" % self.firstDigit)
                 ch = self.firstDigit
                 self.finish_two_digit_input(ch)
             else:
-                self.logger.debug("Two digit input timed out w/o input. Cancelled")
+                self.logger.info("Two digit input timed out w/o input. Cancelled")
                 self.cancel_two_digit_input()
                 
     def cancel_two_digit_input(self):
-        self.logger.debug("Two digit input cancelled")
+        self.logger.info("Two digit input cancelled")
         if self.two_digit_timeout:
             self.two_digit_timeout.cancel()
         self.coordinator.invertNeedleLightState(restore=True)
@@ -117,60 +117,60 @@ class IR(object):
                     coordinator.powerOn()
                 continue
             elif "channel_up" in code:
-                self.logger.debug("LIRC: 'channel_up'")
+                self.logger.info("LIRC: 'channel_up'")
                 coordinator.setChannel(channel=1, relative=True)
                 continue
             elif "channel_down" in code:
-                self.logger.debug("LIRC: 'channel_down'")
+                self.logger.info("LIRC: 'channel_down'")
                 coordinator.setChannel(channel=-1, relative=True)
                 continue
             elif "volume_up" in code:
-                self.logger.debug("LIRC: 'volume_up'")
+                self.logger.info("LIRC: 'volume_up'")
                 coordinator.volumeUp()
                 continue
             elif "volume_down" in code:
-                self.logger.debug("LIRC: 'volume_down'")
+                self.logger.info("LIRC: 'volume_down'")
                 coordinator.volumeDown()
                 continue
             elif "1" in code:
-                self.logger.debug("LIRC: '1'")
+                self.logger.info("LIRC: '1'")
                 digit = 1
             elif "2" in code:
-                self.logger.debug("LIRC: '2'")
+                self.logger.info("LIRC: '2'")
                 digit = 2
             elif "3" in code:
-                self.logger.debug("LIRC: '3'")
+                self.logger.info("LIRC: '3'")
                 digit = 3
             elif "4" in code:
-                self.logger.debug("LIRC: '4'")
+                self.logger.info("LIRC: '4'")
                 digit = 4
             elif "5" in code:
-                self.logger.debug("LIRC: '5'")
+                self.logger.info("LIRC: '5'")
                 digit = 5
             elif "6" in code:
-                self.logger.debug("LIRC: '6'")
+                self.logger.info("LIRC: '6'")
                 digit = 6
             elif "7" in code:
-                self.logger.debug("LIRC: '7'")
+                self.logger.info("LIRC: '7'")
                 digit = 7
             elif "8" in code:
-                self.logger.debug("LIRC: '8'")
+                self.logger.info("LIRC: '8'")
                 digit = 8
             elif "9" in code:
-                self.logger.debug("LIRC: '9'")
+                self.logger.info("LIRC: '9'")
                 digit = 9
             elif "0" in code:
-                self.logger.debug("LIRC: '0'")
+                self.logger.info("LIRC: '0'")
                 digit = 0
             elif "ok" in code:
-                self.logger.debug("LIRC: 'ok'")
+                self.logger.info("LIRC: 'ok'")
                 with self.twoDigitLock:
                     self.finish_two_digit_input(self.firstDigit)
             elif "esc" in code:
-                self.logger.debug("LIRC: 'esc'")
+                self.logger.info("LIRC: 'esc'")
                 pass
             elif "mute" in code:
-                self.logger.debug("LIRC: 'mute'")
+                self.logger.info("LIRC: 'mute'")
                 with self.twoDigitLock:
                     self.cancel_two_digit_input()
                     self.coordinator.sleep(0) # cancel old sleep
@@ -185,7 +185,7 @@ class IR(object):
             with self.twoDigitLock:
                 if digit is not None:
                     if self.firstDigit is None:
-                        self.logger.debug("LIRC: first digit: %i" % digit)
+                        self.logger.info("LIRC: first digit: %i" % digit)
                         self.firstDigit = digit
                         self.coordinator.invertNeedleLightState()
                         self.two_digit_timeout = threading.Timer(2.0, self.do_two_digit_timeout)
@@ -193,7 +193,7 @@ class IR(object):
                     else:
                         self.two_digit_timeout.cancel()
                         digit+=(self.firstDigit*10)
-                        self.logger.debug("LIRC: two digit value: %i" % digit)
+                        self.logger.info("LIRC: two digit value: %i" % digit)
                         self.finish_two_digit_input(digit)
                 else:
                     self.cancel_two_digit_input()
