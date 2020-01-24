@@ -17,11 +17,13 @@ begin
   button = KEY_VOLUMEUP
   prog = RaspberryRadio
   config = volume_up
+  repeat = 1
 end
 begin
   button = KEY_VOLUMEDOWN
   prog = RaspberryRadio
   config = volume_down
+  repeat = 2
 end
 begin
   button = KEY_1
