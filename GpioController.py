@@ -104,7 +104,7 @@ class GpioController(object):
         self.pin_speakers = config.pin_speakers
         
         self.pwm = Adafruit_PCA9685.PCA9685(address=0x40)
-        self.pwm.set_pwm_freq(5000)
+        self.pwm.set_pwm_freq(50)
         for pin in range(0,16):
             self.pwmAsGpio(pin, PowerState.OFF)
     

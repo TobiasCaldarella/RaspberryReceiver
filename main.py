@@ -13,7 +13,7 @@ import GpioController
 import Coordinator
 import TuningWheel
 import MpdClient
-#import IR
+import IR
 from time import sleep
 import RPi.GPIO as GPIO
 import Bluetooth
@@ -37,7 +37,7 @@ if __name__ == '__main__':
     else:
         logger.info("Not initializing TuningWheel since gpio_mag_right and/or gpio_mag_left are not set in configuration")
     
-    #ir = IR.IR(config, coordinator)
+    ir = IR.IR(config, coordinator)
     
     if config.mqtt_server is not None and config.mqtt_port is not None and config.mqtt_base_topic is not None:
         mqttClient = MqttClient.MqttClient(config, coordinator)
