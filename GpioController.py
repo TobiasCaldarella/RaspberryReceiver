@@ -35,7 +35,7 @@ class Light(object):
         if intensity is None:
             intensity = self.intensity
             
-        if self.state == state and intensity == self.intensity:
+        if self.state == state and intensity == self.intensity and self.blinkingPeriod_ms == -1:
             self.mtx.release()
             return
         
