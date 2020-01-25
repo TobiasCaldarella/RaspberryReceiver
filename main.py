@@ -14,6 +14,7 @@ import Coordinator
 import TuningWheel
 import MpdClient
 import IR
+import MotorPoti
 from time import sleep
 import RPi.GPIO as GPIO
 import Bluetooth
@@ -49,9 +50,9 @@ if __name__ == '__main__':
     needle = Needle.Needle(config, coordinator)
     bluetooth = Bluetooth.Bluetooth(config, coordinator)
     textToSpeech = TextToSpeech.TextToSpeech(config, coordinator)
+    motorPoti = MotorPoti.MotorPoti(config, coordinator, pwrcnt)
     
     coordinator.initialize()
-    
     while True:
         logger.debug("-MARK-")
         sleep(10)

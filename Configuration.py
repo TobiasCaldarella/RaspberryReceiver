@@ -43,6 +43,14 @@ class Configuration(object):
         self.pin_stereo = 7
         self.pin_speakers = 4
         
+        #Motorpoti
+        self.motorpoti_pin_A = 1
+        self.motorpoti_pin_B = 2
+        self.motorpoti_pin_EN = 3
+        self.motorpoti_reset_time_ms = 16000
+        self.motorpoti_defaultIntervall_ms = 160
+        self.motorpoti_speed = 30
+        
         # GPIOs tuning wheel mag sensors
         self.gpio_mag_left = 24
         self.gpio_mag_right = 4

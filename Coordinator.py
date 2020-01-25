@@ -14,6 +14,7 @@ import urllib.request
 from time import sleep
 from Configuration import _RadioState, _RadioPowerState
 import queue
+from MotorPoti import MotorPoti
 
 class Coordinator(object):
     '''
@@ -30,6 +31,7 @@ class Coordinator(object):
         self.bluetooth = None
         self.needle = None
         self.wheel = None
+        self.poti = None
         self.logger = logger
         self.ir = None
         self.numChannels = 0
@@ -104,6 +106,7 @@ class Coordinator(object):
             self.gpioController.setNeedlelight(PowerState.OFF)
             self.gpioController.setPowerAndSpeaker(PowerState.OFF)
             self.gpioController.setStereoBlink(active=True, pause_s=10)
+            self.setBrightness(self.config.backlight_default_brightness)
             self.mqttClient.publish_power_state(PowerState.OFF)
             self.powerState = _RadioPowerState.POWERED_DOWN
     
@@ -121,6 +124,7 @@ class Coordinator(object):
                 return
             self.logger.info("Powering up amp...")
             self.powerState = _RadioPowerState.POWERING_UP
+            self.setBrightness(self.config.backlight_default_brightness)
             self.gpioController.setBacklight(PowerState.ON)
             self.gpioController.setStereolight(PowerState.OFF)
             self.gpioController.setPowerAndSpeaker(PowerState.ON)
@@ -169,7 +173,8 @@ class Coordinator(object):
             self.ir.connect()
         
         self.connectWifi()
-            
+        if self.poti:
+            self.poti.reset()
         # connect MPD client and load playlist
         if self.mpdClient.connect() is not True:
             self.logger.warn("Could not connect to MPD. Disabled...");
@@ -230,7 +235,7 @@ class Coordinator(object):
                 else:
                     self.gpioController.setNeedlelight(PowerState.OFF)
             else:    
-                if self.gpioController.needleLightState == PowerState.ON:
+                if self.gpioController.needleLight.state == PowerState.ON:
                     self.gpioController.setNeedlelight(PowerState.OFF)
                 else:
                     self.gpioController.setNeedlelight(PowerState.ON)
@@ -269,7 +274,8 @@ class Coordinator(object):
     
     def volumeUp(self):
         self.logger.info("volumeUp requested")
-        self._putJobIntoQueue(self._volumeUp)
+        self.poti.moveCW(self.config.motorpoti_speed)
+        #self._putJobIntoQueue(self._volumeUp)
                 
     def _volumeUp(self):
         with self.playStateCnd:
@@ -284,7 +290,8 @@ class Coordinator(object):
             
     def volumeDown(self):
         self.logger.info("volumeDown requested")
-        self._putJobIntoQueue(self._volumeDown)
+        self.poti.moveCCW(self.config.motorpoti_speed)
+        #self._putJobIntoQueue(self._volumeDown)
     
     def _volumeDown(self):
         with self.playStateCnd:
@@ -306,8 +313,7 @@ class Coordinator(object):
             if vol < 0 or vol > 100:
                 self.logger.warn("Received invalid volume: %i", vol)
             else:
-                if self.isPoweredOn():
-                    self.mpdClient.setVolume(vol)
+                self.poti.set(vol, not self.isPoweredOn())
                 self.currentVolume = vol
     
     def radioStop(self):
@@ -475,6 +481,9 @@ class Coordinator(object):
             self.mqttClient.pubInfo(radioState, currentChannel+1, currentVolume, currentSongInfo, numChannels, brightness, poweredOn)  # human-readable channel
 
     def setBrightness(self, brightness):
+        self.logger.info("Setting brightness to %i" % brightness)
         if self.gpioController:
             self.gpioController.setBacklight(intensity = brightness)
+            self.gpioController.setNeedlelight(intensity = min(brightness + 30,100))
+            self.gpioController.setStereolight(intensity = brightness)
         self.sendStateToMqtt()
