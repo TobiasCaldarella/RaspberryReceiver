@@ -27,52 +27,62 @@ class Light(object):
         self.blinkingPeriod_ms = -1
         self.thread = None
         self.blinkTimer = None
-        self.intensity = 0
+        self.intensity = 100
         self.timerIdx = 0
     
-    def set(self, state, intensity=100):
-        if state != PowerState.OFF and state != PowerState.ON:
-            self.ctr.logger.warn("Invalid state: %s" % state)
-            return
-        
+    def set(self, state=None, intensity=None):        
         self.mtx.acquire()
-        if self.state == state and (intensity == self.intensity or state == PowerState.OFF):
+        if intensity is None:
+            intensity = self.intensity
+            
+        if self.state == state and intensity == self.intensity:
             self.mtx.release()
             return
         
-        self.blinkingPeriod_ms = -1
-        if self.blinkTimer:
-            self.blinkTimer.cancel()
+        if state is None:
+            state = self.state
+        else:
+            self.blinkingPeriod_ms = -1 # if a state is set, cancel blinking
+            if self.blinkTimer:
+                self.blinkTimer.cancel()            
             
         self.thread = threading.Thread(target=lambda: self._set(state, intensity) or self.mtx.release())
         self.thread.start()
     
-    def _set(self, state, intensity=100):
+    def _set(self, state, intensity):
+        if intensity is None:
+            intensity = self.intensity
         if intensity < 0 or intensity > 100:
             self.ctr.logger.warning("Invalid intensity: %i" % intensity)
             return
+        self.ctr.logger.debug("Setting state %s intensity %i" % (state, intensity))
         
-        self.state = state
         currentIntensity = self.intensity
-        if state == PowerState.ON and intensity > 0:
-            self.intensity = intensity
+        if self.state == PowerState.OFF:
+            currentIntensity = 0
+        self.state = state
+        self.intensity = intensity
+        if state == PowerState.ON:
             self.ctr.fade(self.pin, currentIntensity, intensity, self.fadeSteps)
-            self.intensity = intensity
         else:
-            self.intensity = 0
+            #self.intensity = 0
             self.ctr.fade(self.pin, currentIntensity, 0, self.fadeSteps)
         
-    def blink(self, period_ms, intensity=100):
+    def blink(self, period_ms, intensity=None):
         if period_ms < 0:
             self.ctr.logger.warn("Invalid period: %i" % period_ms)
             return
         
         with self.mtx:
+            if intensity is not None:
+                self.intensity = intensity
+            #if intensity is None:
+            #    intensity = self.intensity
             self.blinkingPeriod_ms = period_ms
             if self.blinkTimer:
                 self.blinkTimer.cancel()
             self.timerIdx = self.timerIdx + 1
-            self.blinkTimer = threading.Timer(0, function=lambda: self._blink(intensity, self.timerIdx))
+            self.blinkTimer = threading.Timer(0, function=lambda: self._blink(intensity=None, idx=self.timerIdx))
             self.blinkTimer.start()
         
     def _blink(self, intensity, idx):
@@ -103,8 +113,9 @@ class GpioController(object):
         self.pin_pwr = config.pin_power
         self.pin_speakers = config.pin_speakers
         
+        self.pwmMtx = threading.Lock()
         self.pwm = Adafruit_PCA9685.PCA9685(address=0x40)
-        self.pwm.set_pwm_freq(50)
+        self.pwm.set_pwm_freq(100)
         for pin in range(0,16):
             self.pwmAsGpio(pin, PowerState.OFF)
     
@@ -131,13 +142,15 @@ class GpioController(object):
         self.logger.info("GpioController initialized")
         
     def pwmAsGpio(self, pin, state):
-        if state is GPIO.HIGH:
-            self.pwm.set_pwm(pin, 0, 4095)
-        else:
-            self.pwm.set_pwm(pin, 0, 0)
+        with self.pwmMtx:
+            if state is GPIO.HIGH:
+                self.pwm.set_pwm(pin, 0, 4095)
+            else:
+                self.pwm.set_pwm(pin, 0, 0)
             
     def pwmPercent(self, pin, onPercent):
-        self.pwm.set_pwm(pin, int(4095-(onPercent/100*4095)), 4095)
+        with self.pwmMtx:
+            self.pwm.set_pwm(pin, int(4095-(onPercent/100*4095)), 4095)
         
     def setPowerAndSpeaker(self, state: PowerState):
         if state is PowerState.OFF:
@@ -157,6 +170,7 @@ class GpioController(object):
                 self.logger.debug("Speakers on")
 
     def fade(self, pin, current, target, steps):
+        self.logger.info("current %i target %i" % (current,target))
         if pin is None:
             return
         if current == target:
@@ -171,39 +185,31 @@ class GpioController(object):
                 steps = steps - 1
         self.pwmPercent(pin, target)
         
-    def setBacklight(self, state = PowerState.ON, intensity = None):
+    def setBacklight(self, state = None, intensity = None):
         if self.backLight is None:
             return
-        
-        if intensity is None:
-            intensity = self.backlightDefaultIntensity
-                
-        if state is not PowerState.ON:
-            intensity = 0
-            
         self.backLight.set(state, intensity)
         
-    def setStereolight(self, state: PowerState, blinking = False):
+    def setStereolight(self, state = None, blinking = False, intensity = None):
         if self.stereoLight is None:
             return
         
         if blinking:
-            self.stereoLight.blink(0) # blink constantly
+            self.stereoLight.blink(0, intensity) # blink constantly
         else:
-            self.stereoLight.set(state)
+            self.stereoLight.set(state, intensity)
             
-    def setStereoBlink(self, active=False, pause_s = 0):
+    def setStereoBlink(self, active=False, pause_s = 0, intensity = None):
         self.logger.debug("StereoLight blink set to %s, pause %i" %(active, pause_s))
         if active:
-            self.stereoLight.blink(pause_s*1000)
+            self.stereoLight.blink(pause_s*1000, intensity)
         else:
-            self.stereoLight.set(PowerState.OFF)
+            self.stereoLight.set(PowerState.OFF, intensity)
         
-    def setNeedlelight(self, state: PowerState):
+    def setNeedlelight(self, state = None, intensity = None):
         if self.needleLight is None:
             return
-        
-        self.needleLight.set(state)
+        self.needleLight.set(state, intensity)
             
     def enable_power_button(self):
         self.logger.debug("Power button enabled")
