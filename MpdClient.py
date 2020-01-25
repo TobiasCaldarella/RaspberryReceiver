@@ -128,7 +128,7 @@ class MpdClientEventListener(object):
                 currentVolume = None
                 if 'song' in stat:
                     currentSongId = int(stat['song'])
-                if 'volume' in stat:
+                if 'volume' in stat and self.config.mpd_change_volume:
                     currentVolume = int(stat['volume'])
                 if self.notifyCoordinator:
                     self.coordinator.currentlyPlaying(mpdPlaying=playing, channel=currentSongId, 

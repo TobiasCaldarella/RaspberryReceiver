@@ -139,7 +139,7 @@ class Coordinator(object):
             self.radioPlay(announceChannel=False) # put this into queue 
             self.bluetooth.enable()
             self.wheel.enable()
-        self.mpdClient.notifyCoordinator = True # now we are ready to receive status updates
+        self.mpdClient.listener.notifyCoordinator = True # now we are ready to receive status updates
         self.mpdClient.setVolume(self.currentVolume) # and this just triggers an update of the mpd state so we can get a current status now
             
     def sleep(self, time_m):
@@ -365,7 +365,9 @@ class Coordinator(object):
                 lang = channelName[1]
                 channelName = channelName[0]
                 
+            self.playStateCnd.release()
             self.textToSpeech.speak(text=channelName,lang=lang,mute=False)
+            self.playStateCnd.acquire()
             self.waitForRadioState(desiredState=_RadioState.PLAYING, lock=self.playStateCnd)
             self.mpdClient.mute(False)
     

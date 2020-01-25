@@ -25,7 +25,7 @@ class TextToSpeech(object):
         self.lock = threading.Lock()
         
     def playOgg(self, file):
-        cmd = "ogg123 -d alsa -o dev:'plug:dmix' " + file
+        cmd = "ogg123 -q -d alsa -o dev:'plug:dmix' " + file
         self.logger.info("TextToSpeech: calling '%s'" % cmd)
         os.system(cmd)
     
