@@ -64,6 +64,7 @@ class Configuration(object):
         self.mpd_radio_playlist = "http://local_pub.openhabianpi/radio.m3u"
         self.mpd_local_playlist = "/var/lib/mpd/playlists/radio.m3u"
         self.mpd_playlist_name = "radio"
+        self.mpd_change_volume = False
         # Needle mover
         self.gpio_needle_a = 22
         self.gpio_needle_b = 17

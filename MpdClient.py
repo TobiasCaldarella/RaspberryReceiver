@@ -282,55 +282,10 @@ class MpdClient(object):
             queue_item()
         self.logger.debug("Queue handler stopped")
     
-    def playSingleFile(self, file, vol = None):
-        self.logger.info("putting playSingleFile(%s) into queue..." % file)
-        try:
-            self.queue.put(item= lambda: self._playSingleFile(file, vol), block = True, timeout=0.5)
-            return True
-        except:
-            self.logger.error("Error putting job into queue!")
-            return False
-        
-    def _playSingleFile(self, file, vol):
-        self.logger.info("Playing single file '%s'..." % file)
-        try:
-            # what if radio state not playing nor stopped?
-            resumeRadio = (self.coordinator.radioState == _RadioState.PLAYING)
-            self._stop()
-            # Todo: disable/pause bluetooth?
-            self.coordinator.waitForRadioState(_RadioState.STOPPED)
-            self.listener.setNotifyCoordinator(False)
-            self.listener.resetStatus()
-            with self.connection:
-                self.client.send_clear()
-                self.client.send_add(file)
-                self.client.send_consume(1)
-                if vol is not None:
-                    self.client.send_setvol(vol)
-                self.client.send_play()
-                # todo: wait for playback to start and finish
-            if self.listener.waitForStatus('started', 10):
-                self.listener.waitForStatus('ended', 60) # do not wait for end if started already timed out!
-                self.logger.info("Playback of '%s' done" % file)
-            if self.listener.checkStatus('error'):
-                self.logger.warning("Playback of '%s' failed!" % file)
-                return
-        finally:
-            self.listener.resetStatus()
-            self.listener.setNotifyCoordinator(True)
-            self.loadRadioPlaylist() # and load radio playlist to leave everything as it was before 
-            if resumeRadio:
-                self.logger.debug("Resuming radio")
-                self.coordinator.radioPlay()
-                #self.listener.waitForStatus('started', 30)
-            else:
-                self.logger.debug("Not resuming radio")
-            # todo: reenable bluetooth?
-    
-    def playTitle(self, playlistPosition):
+    def playTitle(self, playlistPosition, muted = False):
         self.logger.info("putting playTitle(%s) into queue..." % playlistPosition)
         try:
-            self.queue.put(item= lambda: self._playTitle(playlistPosition), block = True, timeout=0.5)
+            self.queue.put(item= lambda: self._playTitle(playlistPosition, muted), block = True, timeout=0.5)
             return True
         except:
             self.logger.error("Error putting job into queue!")
@@ -346,18 +301,12 @@ class MpdClient(object):
             return False            
     
     def setVolume(self, vol):
+        if self.config.mpd_change_volume is False:
+            self.logger.debug("mpd_change_volume is False, not setting global volume via mpd")
+            return
         self.logger.info("putting setVolume(%i) into queue..." % vol)
         try:
             self.queue.put(item= lambda: self._setVolume(vol), block = True, timeout=0.5)
-            return True
-        except:
-            self.logger.error("Error putting job into queue!")
-            return False 
-        
-    def pause(self):
-        self.logger.info("putting pause() into queue...")
-        try:
-            self.queue.put(item= lambda: self._pause(), block = True, timeout=0.5)
             return True
         except:
             self.logger.error("Error putting job into queue!")
@@ -377,6 +326,10 @@ class MpdClient(object):
         self.logger.info("stopping...")
         with self.connection:
             try:
+                if self.config.mpd_change_volume is False:
+                    for vol in range(80,-1,-20):
+                        self.client.send_setvol(vol)
+                        time.sleep(0.1)
                 self.client.send_stop()
                 self.logger.info("...stop sent!")
                 return True
@@ -384,26 +337,41 @@ class MpdClient(object):
                 self.logger.error("Caught exception in MpdClient.stop(): '%s'" % (sys.exc_info()[0]))
                 return False
             
-    def _pause(self):
-        self.logger.info("pausing...")
-        with self.connection:
-            try:
-                self.client.send_pause()
-                self.logger.info("...paused!")
-                return True
-            except:
-                self.logger.error("Caught exception in MpdClient.stop(): '%s'" % (sys.exc_info()[0]))
-                return False
-    
-    def _playTitle(self, playlistPosition):
+    def _playTitle(self, playlistPosition, muted):
         self.logger.info("starting play...")
         self.coordinator.currentlyPlaying(mpdPlaying=False)
         with self.connection:
             try:
+                self.client.send_setvol(0)
                 self.client.send_play(playlistPosition)
+                if not muted:
+                    if self.config.mpd_change_volume is False:
+                        for vol in range(20,101,20):
+                            self.client.send_setvol(vol)
+                            time.sleep(0.1)
                 self.logger.info("...play sent!")
                 return True
             except:
                 self.logger.error("Caught exception in MpdClient.playTitle(): '%s'" % (sys.exc_info()[0]))
                 return False
             
+    # this one is not async. not sure if it's a good idea...
+    def mute(self, mute):
+        try:
+            self.logger.info("Muting/Unmuting mpd. mute: %s" % mute)
+            with self.connection:
+                if mute == True:
+                    if self.config.mpd_change_volume is False:
+                        for vol in range(80,-1,-20):
+                            self.client.send_setvol(vol)
+                            time.sleep(0.1)
+                else:
+                    self.client.send_setvol(0)
+                    if self.config.mpd_change_volume is False:
+                        for vol in range(20,101,20):
+                            self.client.send_setvol(vol)
+                            time.sleep(0.1)
+        except:
+            self.logger.error("Caught exception in MpdClient.mute(): '%s'" % (sys.exc_info()[0]))
+            return False
+        

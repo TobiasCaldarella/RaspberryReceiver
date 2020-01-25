@@ -133,7 +133,6 @@ class Coordinator(object):
             self.mpdClient.startQueueHandler()
             self._radioStop()
             self.radioState = _RadioState.STOPPED
-            self.mpdClient.playSingleFile("/opt/RaspberryReceiver/resources/silence.mp3")
             self.mpdClient.setVolume(self.currentVolume) # set this before accepting any feedback from mpd
             self.needle.setNeedleForChannel(ch=self.currentChannel, relative=False, drivingThread=True, mtx=self.playStateCnd)
             self.powerState = _RadioPowerState.POWERED_UP
@@ -275,7 +274,7 @@ class Coordinator(object):
     def volumeUp(self):
         self.logger.info("volumeUp requested")
         self.poti.moveCW(self.config.motorpoti_speed)
-        #self._putJobIntoQueue(self._volumeUp)
+        self._putJobIntoQueue(self._volumeUp)
                 
     def _volumeUp(self):
         with self.playStateCnd:
@@ -291,7 +290,7 @@ class Coordinator(object):
     def volumeDown(self):
         self.logger.info("volumeDown requested")
         self.poti.moveCCW(self.config.motorpoti_speed)
-        #self._putJobIntoQueue(self._volumeDown)
+        self._putJobIntoQueue(self._volumeDown)
     
     def _volumeDown(self):
         with self.playStateCnd:
@@ -313,6 +312,8 @@ class Coordinator(object):
             if vol < 0 or vol > 100:
                 self.logger.warn("Received invalid volume: %i", vol)
             else:
+                if self.isPoweredOn():
+                    self.mpdClient.setVolume(vol)
                 self.poti.set(vol, not self.isPoweredOn())
                 self.currentVolume = vol
     
@@ -324,16 +325,7 @@ class Coordinator(object):
         with self.playStateCnd:
             self.__radioStop()
             if waitForStop:
-                self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
-
-    def radioRestart(self):
-        self.logger.info("RadioRestart requested")
-        self._putJobIntoQueue(self._radioRestart)           
-                
-    def _radioRestart(self):
-        with self.playStateCnd:
-            self.__radioPause()
-            self.__radioPlay()
+                self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)    
     
     def __radioStop(self, needleLightOff=True):
         self.mpdClient.stop()
@@ -364,6 +356,7 @@ class Coordinator(object):
             return
         self.gpioController.setNeedlelight(PowerState.ON)
         self.mpdClient.setVolume(self.currentVolume)
+        self.mpdClient.playTitle(playlistPosition=self.currentChannel, muted=announceChannel)
         if announceChannel:
             channelName = self.channels[self.currentChannel]
             lang='de-de'
@@ -372,8 +365,8 @@ class Coordinator(object):
                 lang = channelName[1]
                 channelName = channelName[0]
                 
-            self.textToSpeech.speak(text=channelName,lang=lang);
-        self.mpdClient.playTitle(self.currentChannel)
+            self.textToSpeech.speak(text=channelName,lang=lang)
+            self.mpdClient.mute(False)
     
     def isPoweredOn(self):
         return (self.powerState is _RadioPowerState.POWERED_UP)
@@ -425,7 +418,11 @@ class Coordinator(object):
         elif (state == _RadioState.STOPPED):
             self.gpioController.setStereolight(PowerState.OFF)  
         elif (state == _RadioState.BLUETOOTH):
-            self.gpioController.setStereoBlink(active=True, pause_s=1)          
+            self.gpioController.setStereoBlink(active=True, pause_s=1)
+        
+    # mutes or unmutes radio (and maybe other sources like bluetooth in future?)    
+    def mute(self, mute):
+        self.mpdClient.mute(mute)
     
     def speak(self, text, lang):
         self.logger.debug("Speak '%s', lang '%s'" % (text, lang))

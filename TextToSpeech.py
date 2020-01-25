@@ -8,6 +8,7 @@ import requests
 import threading
 from os.path import sys
 import os
+from keyrings.alt import file
 
 class TextToSpeech(object):
     '''
@@ -23,16 +24,20 @@ class TextToSpeech(object):
         coordinator.textToSpeech = self
         self.lock = threading.Lock()
         
+    def playOgg(self, file):
+        cmd = "ogg123 -d alsa -o dev:'plug:dmix' " + file
+        self.logger.info("TextToSpeech: calling '%s'" % cmd)
+        os.system(cmd)
+    
     def speak(self, text, lang):
         with self.lock:
             self.logger.info("Speak: '%s'" % text)
             textEncoded = urllib.parse.quote(text, safe='')
-            url = 'https://api.voicerss.org/?key=' + self.apiKey + '&hl=' + lang + \
-                '&c=OGG&f=44khz_16bit_mono&src=' + textEncoded
-            
             cacheUrl = self._get_from_cache(textEncoded, lang)
             if cacheUrl is not None:
-                self.coordinator.playSingleFile(cacheUrl)
+                self.coordinator.mute(mute=True)
+                self.playOgg(cacheUrl)
+                self.coordinator.mute(mute=False)
         
     def _get_from_cache(self, filename, lang):
         try:
