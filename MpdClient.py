@@ -327,7 +327,7 @@ class MpdClient(object):
         with self.connection:
             try:
                 if self.config.mpd_change_volume is False:
-                    for vol in range(80,-1,-20):
+                    for vol in range(60,-1,-20):
                         self.client.send_setvol(vol)
                         time.sleep(0.1)
                 self.client.send_stop()
@@ -346,7 +346,7 @@ class MpdClient(object):
                 self.client.send_play(playlistPosition)
                 if not muted:
                     if self.config.mpd_change_volume is False:
-                        for vol in range(20,101,20):
+                        for vol in range(20,81,20):
                             self.client.send_setvol(vol)
                             time.sleep(0.1)
                 self.logger.info("...play sent!")
@@ -356,19 +356,18 @@ class MpdClient(object):
                 return False
             
     # this one is not async. not sure if it's a good idea...
-    def mute(self, mute):
+    def mute(self, muted):
         try:
-            self.logger.info("Muting/Unmuting mpd. mute: %s" % mute)
+            self.logger.info("Muting/Unmuting mpd. mute: %s" % muted)
             with self.connection:
-                if mute == True:
+                if muted == True:
                     if self.config.mpd_change_volume is False:
-                        for vol in range(80,-1,-20):
+                        for vol in range(60,-1,-20):
                             self.client.send_setvol(vol)
                             time.sleep(0.1)
                 else:
-                    self.client.send_setvol(0)
                     if self.config.mpd_change_volume is False:
-                        for vol in range(20,101,20):
+                        for vol in range(20,81,20):
                             self.client.send_setvol(vol)
                             time.sleep(0.1)
         except:

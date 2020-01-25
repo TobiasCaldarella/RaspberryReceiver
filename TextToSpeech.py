@@ -29,15 +29,17 @@ class TextToSpeech(object):
         self.logger.info("TextToSpeech: calling '%s'" % cmd)
         os.system(cmd)
     
-    def speak(self, text, lang):
+    def speak(self, text, lang, mute=True):
         with self.lock:
             self.logger.info("Speak: '%s'" % text)
             textEncoded = urllib.parse.quote(text, safe='')
             cacheUrl = self._get_from_cache(textEncoded, lang)
             if cacheUrl is not None:
-                self.coordinator.mute(mute=True)
+                if mute:
+                    self.coordinator.mute(mute=True)
                 self.playOgg(cacheUrl)
-                self.coordinator.mute(mute=False)
+                if mute:
+                    self.coordinator.mute(mute=False)
         
     def _get_from_cache(self, filename, lang):
         try:

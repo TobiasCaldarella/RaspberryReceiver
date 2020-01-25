@@ -365,7 +365,8 @@ class Coordinator(object):
                 lang = channelName[1]
                 channelName = channelName[0]
                 
-            self.textToSpeech.speak(text=channelName,lang=lang)
+            self.textToSpeech.speak(text=channelName,lang=lang,mute=False)
+            self.waitForRadioState(desiredState=_RadioState.PLAYING, lock=self.playStateCnd)
             self.mpdClient.mute(False)
     
     def isPoweredOn(self):
