@@ -161,11 +161,17 @@ class MqttClient(object):
             self.logger.warn("Received Message on 'volume' topic but no callback is set")
             return
         try:
-            newVolume = int(message.payload.decode("utf-8"))
-            if newVolume < 0 or newVolume > 100:
-                self.logger.warn("Invalid volume received. Must be: 0 < volume < 100")
+            newVolume = message.payload.decode("utf-8")
+            if newVolume == "up" or newVolume == "UP":
+                self.coordinator.volumeUp()
+            elif newVolume == "down" or newVolume == "DOWN":
+                self.coordinator.volumeDown()
             else:
-                self.coordinator.setVolume(newVolume)
+                newVolumeAsInt = int(newVolume)
+                if newVolumeAsInt < 0 or newVolumeAsInt > 100:
+                    self.logger.warn("Invalid volume received. Must be: 0 < volume < 100")
+                else:
+                    self.coordinator.setVolume(newVolumeAsInt)
         except ValueError:
             self.logger.warn("Invalid data over 'volume' topic received, must be a number")
         except UnicodeDecodeError:
@@ -228,7 +234,12 @@ class MqttClient(object):
             if 'channel' in commands:
                 self.coordinator.setChannel(channel = int(commands['channel'])-1, relative = False, setIfPowerOff = True)  # channel starts at 0
             if 'volume' in commands:
-                self.coordinator.setVolume(int(commands['volume']))          
+                if commands['volume'] == "up" or commands['volume'] == "UP":
+                    self.coordinator.volumeUp()
+                elif commands['volume'] == "down" or commands['volume'] == "DOWN":
+                    self.coordinator.volumeDown()
+                else:
+                    self.coordinator.setVolume(int(commands['volume']))
             if 'power' in commands:
                 if commands['power'] == 'ON':
                     self.coordinator.powerOn()
