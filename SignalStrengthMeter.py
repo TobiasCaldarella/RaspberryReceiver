@@ -20,10 +20,10 @@ class PCF8591(object):
         self.bus.write_byte_data(self.address,self.cmd,value)
         
 class SignalStrengthMeter(object):
-    def __init__(self, coordinator):
+    def __init__(self, config, coordinator):
         self.t = None
         self.lastValue = None
-        self.dac = PCF8591()
+        self.dac = PCF8591(config)
         self.run = True
         self.lastAvg = 0
         self.numCollectedValues = 0
@@ -51,9 +51,9 @@ class SignalStrengthMeter(object):
                     if self.lastValue is not None:
                         diff = int((newValue - self.lastValue)/32768*10*256) # maximum @256kbit/s=>32kB/s
                         
-                        self.lastAvg = self.numCollectedValues/100*self.lastAvg + (self.numCollectedValues-100)/100*diff
-                        if self.numCollectedValues < 99:
-                            self.numCollectedValues = self.numCollectedValues + 1
+                        self.lastAvg = 0.9*self.lastAvg + 0.1*diff
+                        #if self.numCollectedValues < 99:
+                        #    self.numCollectedValues = self.numCollectedValues + 1
                             
                         self.dac.send(min(int(self.lastAvg),255))
                     self.lastValue = newValue
