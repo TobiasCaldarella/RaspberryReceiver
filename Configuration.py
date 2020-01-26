@@ -83,3 +83,5 @@ class Configuration(object):
         self.backlight_sleep_brightness = 10
         self.stereo_default_brightness= 100
         
+        self.signal_strength_dac_address = 0x48
+        

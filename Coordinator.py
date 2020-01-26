@@ -34,6 +34,7 @@ class Coordinator(object):
         self.poti = None
         self.logger = logger
         self.ir = None
+        self.signal_strength_meter = None
         self.numChannels = 0
         self.currentChannel = 0
         self.needleStepsPerChannel = 0
@@ -106,6 +107,7 @@ class Coordinator(object):
             self.gpioController.setNeedlelight(PowerState.OFF)
             self.gpioController.setPowerAndSpeaker(PowerState.OFF)
             self.gpioController.setStereoBlink(active=True, pause_s=10)
+            self.signal_strength_meter.disable()
             self.setBrightness(self.config.backlight_default_brightness)
             self.mqttClient.publish_power_state(PowerState.OFF)
             self.powerState = _RadioPowerState.POWERED_DOWN
@@ -124,6 +126,7 @@ class Coordinator(object):
                 return
             self.logger.info("Powering up amp...")
             self.powerState = _RadioPowerState.POWERING_UP
+            self.signal_strength_meter.enable()
             self.setBrightness(self.config.backlight_default_brightness)
             self.gpioController.setBacklight(PowerState.ON)
             self.gpioController.setStereolight(PowerState.OFF)
@@ -167,6 +170,8 @@ class Coordinator(object):
     def initialize(self):
         self.gpioController.setStereoBlink(active=True, pause_s=0)
         # todo: maybe do this in background?
+        if self.signal_strength_meter:
+            self.signal_strength_meter.init()
             
         if self.ir:
             self.ir.connect()

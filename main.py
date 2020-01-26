@@ -19,6 +19,7 @@ from time import sleep
 import RPi.GPIO as GPIO
 import Bluetooth
 import TextToSpeech
+import SignalStrengthMeter
 
 GPIO.cleanup()
 GPIO.setmode(GPIO.BCM)
@@ -51,7 +52,7 @@ if __name__ == '__main__':
     bluetooth = Bluetooth.Bluetooth(config, coordinator)
     textToSpeech = TextToSpeech.TextToSpeech(config, coordinator)
     motorPoti = MotorPoti.MotorPoti(config, coordinator, pwrcnt)
-    
+    signal_strength_meter = SignalStrengthMeter.SignalStrengthMeter(config, coordinator)
     coordinator.initialize()
     while True:
         logger.debug("-MARK-")
