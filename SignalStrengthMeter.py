@@ -46,10 +46,10 @@ class SignalStrengthMeter(object):
     def processStats(self):
         with open('/proc/net/dev') as f:
             for line in f:
-                if 'wlan0' in line and self.run:
+                if 'wlan0' in line:
                     newValue = int(line.split()[1])
                     if self.lastValue is not None:
-                        diff = int((newValue - self.lastValue)/32768*10*256)
+                        diff = int((newValue - self.lastValue)/32768*10*256) # maximum @256kbit/s=>32kB/s
                         
                         self.lastAvg = self.numCollectedValues/100*self.lastAvg + (self.numCollectedValues-100)/100*diff
                         if self.numCollectedValues < 99:
@@ -59,6 +59,8 @@ class SignalStrengthMeter(object):
                     self.lastValue = newValue
                     f.seek(0)
                     time.sleep(0.1)
+                if not self.run:
+                    break
         # write error log, should never ever exit
         self.t = None
                     

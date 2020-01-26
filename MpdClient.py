@@ -326,10 +326,10 @@ class MpdClient(object):
         self.logger.info("stopping...")
         with self.connection:
             try:
-                if self.config.mpd_change_volume is False:
-                    for vol in range(60,-1,-20):
-                        self.client.send_setvol(vol)
-                        time.sleep(0.1)
+                #if self.config.mpd_change_volume is False:
+                #    for vol in range(60,-1,-20):
+                #        self.client.send_setvol(vol)
+                #        time.sleep(0.1)
                 self.client.send_stop()
                 self.logger.info("...stop sent!")
                 return True
@@ -348,7 +348,7 @@ class MpdClient(object):
                     if self.config.mpd_change_volume is False:
                         for vol in range(20,81,20):
                             self.client.send_setvol(vol)
-                            time.sleep(0.1)
+                            time.sleep(0.2)
                 self.logger.info("...play sent!")
                 return True
             except:
@@ -364,12 +364,12 @@ class MpdClient(object):
                     if self.config.mpd_change_volume is False:
                         for vol in range(60,-1,-20):
                             self.client.send_setvol(vol)
-                            time.sleep(0.1)
+                            time.sleep(0.2)
                 else:
                     if self.config.mpd_change_volume is False:
                         for vol in range(20,81,20):
                             self.client.send_setvol(vol)
-                            time.sleep(0.1)
+                            time.sleep(0.2)
         except:
             self.logger.error("Caught exception in MpdClient.mute(): '%s'" % (sys.exc_info()[0]))
             return False
