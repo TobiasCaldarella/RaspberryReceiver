@@ -109,6 +109,7 @@ class GpioController(object):
         self.logger = config.logger
         self.logger.info("GpioController initializing...")
         self.gpio_pwr_btn = config.gpio_pwr_btn
+        self.gpio_bluetooth_enabled = config.gpio_bluetooth_enabled
         
         self.pin_pwr = config.pin_power
         self.pin_speakers = config.pin_speakers
@@ -134,7 +135,7 @@ class GpioController(object):
         #    if pin is not None:
         #        GPIO.setup(pin, GPIO.OUT, initial = GPIO.HIGH)
         
-        for pin in [ self.gpio_pwr_btn ]:
+        for pin in [ self.gpio_pwr_btn, self.gpio_bluetooth_enabled ]:
             if pin is not None:
                 GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         
@@ -170,7 +171,7 @@ class GpioController(object):
                 self.logger.debug("Speakers on")
 
     def fade(self, pin, current, target, steps):
-        self.logger.info("current %i target %i" % (current,target))
+        self.logger.debug("pin %i current %i target %i" % (pin,current,target))
         if pin is None:
             return
         if current == target:
@@ -218,6 +219,24 @@ class GpioController(object):
     def disable_power_button(self):
         self.logger.debug("Power button disabled")
         GPIO.remove_event_detect(self.gpio_pwr_btn)
+        
+    def do_bluetooth_switch(self, ch):
+        state = GPIO.input(self.gpio_bluetooth_enabled)
+        time.sleep(50)
+        if GPIO.input(self.gpio_bluetooth_enabled) != state:
+            self.logger.debug("Spurious bt switch interrupt, ignored.")
+            return
+        time.sleep(50)
+        if GPIO.input(self.gpio_bluetooth_enabled) != state:
+            self.logger.debug("Spurious bt switch interrupt, ignored.")
+            return
+        
+        self.logger.debug("Bluetooth switch = %s" % state)
+        if state == GPIO.HIGH:
+            self.coordinator.bluetoothControl(False)
+        else:
+            self.coordinator.bluetoothControl(True)
+        
         
     def do_power_button(self, ch):
         if GPIO.input(self.gpio_pwr_btn) != GPIO.LOW:

@@ -33,6 +33,7 @@ class Bluetooth(object):
         if self.playbackProcess is None:
             try:
                 self.logger.info("Starting bluealsa-aplay")
+                self.coordinator.speak("Bluetooth verbunden", 'de-de', block=True)
                 self.playbackProcess = subprocess.Popen(["/usr/bin/bluealsa-aplay", "--profile-a2dp", "00:00:00:00:00:00"])
             except:
                 self.logger.error("Could not start bluealsa-aplay")
@@ -46,6 +47,7 @@ class Bluetooth(object):
             self.logger.info("Killing bluealsa-aplay")
             self.playbackProcess.terminate()
             self.playbackProcess = None
+            self.coordinator.speak("Bluetooth getrennt", 'de-de', block=True)
     
     def enable(self):
         self.logger.info("Enabling bluetooth")
@@ -66,6 +68,7 @@ class Bluetooth(object):
             self.workerThread.join(2)
             if self.workerThread.isAlive():
                 self.logger.error("Could not stop bluetooth monitor thread!")
+            self.workerThread = None
         os.system("/usr/sbin/rfkill block bluetooth")
         
     def _waitForEvent(self):

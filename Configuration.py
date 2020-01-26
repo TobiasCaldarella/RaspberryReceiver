@@ -58,7 +58,8 @@ class Configuration(object):
 
         # GPIOs switches and buttons
         self.gpio_pwr_btn = 9
-        self.gpio_ukw_mute = 16
+        #self.gpio_ukw_mute = 16
+        self.gpio_bluetooth_enabled = 16
         
         # MPD stuff
         self.mpd_radio_playlist = "http://local_pub.openhabianpi/radio.m3u"

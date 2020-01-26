@@ -29,6 +29,7 @@ class Coordinator(object):
         self.gpioController = None
         self.mpdClient = None
         self.bluetooth = None
+        self.bluetoothEnabled = False
         self.needle = None
         self.wheel = None
         self.poti = None
@@ -50,16 +51,16 @@ class Coordinator(object):
         self.job_queue = queue.Queue(30)
         
     def do_work(self):
-        try:
-            self.logger.debug("Worker thread started")
-            while self.running:
+        self.logger.debug("Worker thread started")
+        while self.running:
+            try:
                 self.logger.debug("Worker thread waiting for jobs in queue")
                 job = self.job_queue.get(block=True)
                 if job is not None:
                     self.logger.debug("Running job: '%s'" % job)
                     job()
-        except:
-            self.logger.error("Exception in worker thread: '%s'")
+            except Exception as ex:
+                self.logger.error("Exception in worker thread: '%s'" % ex)
         self.logger.debug("Worker thread stopped") 
     
     def connectWifi(self):
@@ -140,7 +141,8 @@ class Coordinator(object):
             self.needle.setNeedleForChannel(ch=self.currentChannel, relative=False, drivingThread=True, mtx=self.playStateCnd)
             self.powerState = _RadioPowerState.POWERED_UP
             self.radioPlay(announceChannel=False) # put this into queue 
-            self.bluetooth.enable()
+            if self.bluetoothEnabled:
+                self.bluetooth.enable()
             self.wheel.enable()
         self.mpdClient.listener.notifyCoordinator = True # now we are ready to receive status updates
         self.mpdClient.setVolume(self.currentVolume) # and this just triggers an update of the mpd state so we can get a current status now
@@ -209,6 +211,7 @@ class Coordinator(object):
             self.ir.enable()
         self.gpioController.setStereoBlink(active=True, pause_s=10)
         self.running = True
+        self.gpioController.do_bluetooth_switch(None) # get correct switch position at init
         self.workerThread.start()
         self.sendStateToMqtt()
         
@@ -432,9 +435,12 @@ class Coordinator(object):
     def mute(self, mute):
         self.mpdClient.mute(mute)
     
-    def speak(self, text, lang):
+    def speak(self, text, lang, block=False):
         self.logger.debug("Speak '%s', lang '%s'" % (text, lang))
-        self._putJobIntoQueue(lambda: self.textToSpeech.speak(text, lang))
+        if block:
+            self.textToSpeech.speak(text, lang)
+        else:
+            self._putJobIntoQueue(lambda: self.textToSpeech.speak(text, lang))
     
     #todo: make this async
     def playSingleFile(self, file):
@@ -492,3 +498,21 @@ class Coordinator(object):
             self.gpioController.setNeedlelight(intensity = min(brightness + 30,100))
             self.gpioController.setStereolight(intensity = brightness)
         self.sendStateToMqtt()
+        
+    def bluetoothControl(self, enabled):
+        self._putJobIntoQueue(lambda: self._bluetoothControl(enabled))
+        
+    def _bluetoothControl(self, enabled):
+        with self.playStateCnd:
+            self.bluetoothEnabled = enabled
+        if enabled:
+            self.logger.info("Activating bluetooth")
+            self.coordinator.speak("Aktiviere Bluetooth","de-de",True)
+            if self.isPoweredOn():
+                self.bluetooth.enable()
+        else:
+            self.logger.info("Deactivating bluetooth")
+            self.coordinator.speak("Deaktiviere Bluetooth","de-de",True)
+            if self.isPoweredOn():
+                self.bluetooth.disable()
+        
