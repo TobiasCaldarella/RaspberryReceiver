@@ -97,7 +97,7 @@ class MqttClient(object):
             return False
             
     
-    def pubInfo(self, radioState, channel, volume, currentSongInfo, numChannelsInPlaylist, brightness, poweredOn):
+    def pubInfo(self, radioState, channel, volume, currentSongInfo, numChannelsInPlaylist, brightness, poweredOn, bluetooth):
         try:
             self.logger.debug("Publishing status update")
             
@@ -130,6 +130,10 @@ class MqttClient(object):
                 infoDict['state'] = "Stopped"
             else:
                 infoDict['state'] = "Unknown"
+            if bluetooth is True:
+                infoDict['bluetooth'] = "ON"
+            else:
+                infoDict['bluetooth'] = "OFF"                
             
             infoDict['notify'] = 0 # always0 for now, required to workaround bug in openHAB
             self.client.publish(self.config.mqtt_base_topic + "/info", payload=str(json.dumps(infoDict))) # output info as json string
@@ -171,7 +175,7 @@ class MqttClient(object):
                 if newVolumeAsInt < 0 or newVolumeAsInt > 100:
                     self.logger.warn("Invalid volume received. Must be: 0 < volume < 100")
                 else:
-                    self.coordinator.setVolume(newVolumeAsInt)
+                    self.coordinator.setVolume(vol=newVolumeAsInt, waitForPoti=True)
         except ValueError:
             self.logger.warn("Invalid data over 'volume' topic received, must be a number")
         except UnicodeDecodeError:
@@ -239,7 +243,7 @@ class MqttClient(object):
                 elif commands['volume'] == "down" or commands['volume'] == "DOWN":
                     self.coordinator.volumeDown()
                 else:
-                    self.coordinator.setVolume(int(commands['volume']))
+                    self.coordinator.setVolume(vol=int(commands['volume']), waitForPoti=True)
             if 'power' in commands:
                 if commands['power'] == 'ON':
                     self.coordinator.powerOn()

@@ -112,6 +112,7 @@ class Coordinator(object):
             self.setBrightness(self.config.backlight_default_brightness)
             self.mqttClient.publish_power_state(PowerState.OFF)
             self.powerState = _RadioPowerState.POWERED_DOWN
+        self.sendStateToMqtt()
     
     def powerOn(self):
         self.logger.info("Power on requested...")
@@ -146,6 +147,7 @@ class Coordinator(object):
             self.wheel.enable()
         self.mpdClient.listener.notifyCoordinator = True # now we are ready to receive status updates
         self.mpdClient.setVolume(self.currentVolume) # and this just triggers an update of the mpd state so we can get a current status now
+        self.sendStateToMqtt()   
             
     def sleep(self, time_m):
         self.logger.info("Sleep requested...")
@@ -272,12 +274,13 @@ class Coordinator(object):
             self.logger.info("setting channel to %i, relative %s" % (channel, relative))
             self.__radioStop(needleLightOff=False)
             self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
-            self.gpioController.setNeedlelight(PowerState.ON)
             # the needle periodically unlocks the mtx to allow other threads to do stuff
             # get new current channel from needle since it collected all the updates 
             # that occured in the meantime
             self.currentChannel = self.needle.setNeedleForChannel(ch=channel, relative=relative, drivingThread=True, mtx=self.playStateCnd)
-            self.__radioPlay(announceChannel=True)
+            if self.isPoweredOn():
+                self.gpioController.setNeedlelight(PowerState.ON)
+                self.__radioPlay(announceChannel=True)
     
     def volumeUp(self):
         self.logger.info("volumeUp requested")
@@ -311,19 +314,20 @@ class Coordinator(object):
                 vol = 0
             self.mpdClient.setVolume(vol)
     
-    def setVolume(self, vol):
+    def setVolume(self, vol, waitForPoti = False):
         self.logger.info("setVolume requested (volume = %i)" % vol)
-        self._putJobIntoQueue(lambda: self._setVolume(vol))
+        self._putJobIntoQueue(lambda: self._setVolume(vol, waitForPoti))
     
-    def _setVolume(self, vol):
+    def _setVolume(self, vol, waitForPoti):
         with self.playStateCnd:
             if vol < 0 or vol > 100:
                 self.logger.warn("Received invalid volume: %i", vol)
             else:
                 if self.isPoweredOn():
                     self.mpdClient.setVolume(vol)
-                self.poti.set(vol, not self.isPoweredOn())
+                self.poti.set(vol, not self.isPoweredOn(), waitForPoti)
                 self.currentVolume = vol
+        self.sendStateToMqtt()
     
     def radioStop(self):
         self.logger.info("radioStop requested")
@@ -491,8 +495,9 @@ class Coordinator(object):
                 else:
                     brightness = None
                 poweredOn = self.isPoweredOn()
+                bluetooth = self.bluetoothEnabled
                     
-            self.mqttClient.pubInfo(radioState, currentChannel+1, currentVolume, currentSongInfo, numChannels, brightness, poweredOn)  # human-readable channel
+            self.mqttClient.pubInfo(radioState, currentChannel+1, currentVolume, currentSongInfo, numChannels, brightness, poweredOn, bluetooth)  # human-readable channel
 
     def setBrightness(self, brightness):
         self.logger.info("Setting brightness to %i" % brightness)
