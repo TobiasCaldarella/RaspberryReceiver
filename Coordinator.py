@@ -41,7 +41,7 @@ class Coordinator(object):
         self.needleStepsPerChannel = 0
         self.radioState = _RadioState.STOPPED
         self.powerState = _RadioPowerState.POWERED_DOWN
-        self.currentVolume = 70
+        self.currentVolume = 0
         self.sleepTimer = None
         self.playStateCnd = threading.Condition()
         self.currentSongInfo = {}
@@ -264,12 +264,8 @@ class Coordinator(object):
                 self.logger.debug("Bluetooth active, not changing channel")
                 return
                 
-            if not self.isPoweredOn():
-                if setIfPowerOff:
-                    self.logger.info("not powered on, only setting selected channel %i" % channel)
-                    self.currentChannel = channel
-                else:
-                    self.logger.info("not powered on, not setting channel")
+            if not self.isPoweredOn() and not setIfPowerOff:
+                self.logger.info("not powered on, not setting channel")
                 return
             self.logger.info("setting channel to %i, relative %s" % (channel, relative))
             self.__radioStop(needleLightOff=False)
@@ -325,7 +321,7 @@ class Coordinator(object):
             else:
                 if self.isPoweredOn():
                     self.mpdClient.setVolume(vol)
-                self.poti.set(vol, not self.isPoweredOn(), waitForPoti)
+                self.poti.set(vol, waitForPoti)
                 self.currentVolume = vol
         self.sendStateToMqtt()
     
