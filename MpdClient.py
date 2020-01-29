@@ -362,14 +362,14 @@ class MpdClient(object):
             with self.connection:
                 if muted == True:
                     if self.config.mpd_change_volume is False:
-                        for vol in range(60,-1,-20):
+                        for vol in range(60,-1,-10):
                             self.client.send_setvol(vol)
-                            time.sleep(0.2)
+                            time.sleep(0.1)
                 else:
                     if self.config.mpd_change_volume is False:
-                        for vol in range(20,81,20):
+                        for vol in range(20,81,10):
                             self.client.send_setvol(vol)
-                            time.sleep(0.2)
+                            time.sleep(0.1)
         except:
             self.logger.error("Caught exception in MpdClient.mute(): '%s'" % (sys.exc_info()[0]))
             return False
