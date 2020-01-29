@@ -57,18 +57,6 @@ class MotorPoti(object):
             self.mtx.release()
             self.workThread.join()
             self.mtx.acquire()
-        with self.mtx:
-            self.logger.info("Setting volum to %i", volume_percent)
-            self.intervall_ms = self.resetTime_ms
-            self._move(0, 100)
-            self.mtx.release()
-            self.workThread.join()
-            self.mtx.acquire()
-            self.intervall_ms = self.resetTime_ms*(volume_percent/100)
-            self._move(1, 100)
-            self.mtx.release()
-            self.workThread.join()
-            self.mtx.acquire()
     
     def _move(self, direction, speed):
         self.logger.debug("MotorPoti: move requested")

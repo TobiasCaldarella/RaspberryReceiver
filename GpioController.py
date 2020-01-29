@@ -126,7 +126,7 @@ class GpioController(object):
         
         self.coordinator = coordinator
         coordinator.gpioController = self
-        
+                
         #for pin in [ self.gpio_backlight, self.gpio_needle, self.gpio_stereo, self.gpio_speakers ]:
         #    if pin is not None:
         #        GPIO.setup(pin, GPIO.OUT, initial = GPIO.LOW)
@@ -138,6 +138,7 @@ class GpioController(object):
         for pin in [ self.gpio_pwr_btn, self.gpio_bluetooth_enabled ]:
             if pin is not None:
                 GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.add_event_detect(self.gpio_bluetooth_enabled, GPIO.BOTH, callback=self.do_bluetooth_switch, bouncetime=30)    
         
         self.backlightDefaultIntensity = config.backlight_default_brightness
         self.logger.info("GpioController initialized")
@@ -222,16 +223,16 @@ class GpioController(object):
         
     def do_bluetooth_switch(self, ch):
         state = GPIO.input(self.gpio_bluetooth_enabled)
-        time.sleep(50)
+        time.sleep(0.05)
         if GPIO.input(self.gpio_bluetooth_enabled) != state:
             self.logger.debug("Spurious bt switch interrupt, ignored.")
             return
-        time.sleep(50)
+        time.sleep(0.05)
         if GPIO.input(self.gpio_bluetooth_enabled) != state:
             self.logger.debug("Spurious bt switch interrupt, ignored.")
             return
         
-        self.logger.debug("Bluetooth switch = %s" % state)
+        self.logger.info("Bluetooth switch = %s" % state)
         if state == GPIO.HIGH:
             self.coordinator.bluetoothControl(False)
         else:
@@ -242,7 +243,7 @@ class GpioController(object):
         if GPIO.input(self.gpio_pwr_btn) != GPIO.LOW:
             self.logger.debug("Spurious power button interrupt, ignored.")
             return
-        self.logger.debug("Power button pressed!")
+        self.logger.info("Power button pressed!")
         if self.coordinator.powerState == _RadioPowerState.POWERED_UP or self.coordinator.powerState == _RadioPowerState.POWERING_DOWN:
             self.coordinator.powerOff()
         else:

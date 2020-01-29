@@ -437,6 +437,9 @@ class Coordinator(object):
     
     def speak(self, text, lang, block=False):
         self.logger.debug("Speak '%s', lang '%s'" % (text, lang))
+        if not self.isPoweredOn():
+            self.logger.info("Cannot speak if not powered on. Should have said: '%s'" % text)
+            return
         if block:
             self.textToSpeech.speak(text, lang)
         else:
@@ -504,15 +507,18 @@ class Coordinator(object):
         
     def _bluetoothControl(self, enabled):
         with self.playStateCnd:
+            if self.bluetoothEnabled == enabled:
+                self.logger.info("BT already in desired state (%s)" % self.bluetoothEnabled)
+                return
             self.bluetoothEnabled = enabled
         if enabled:
             self.logger.info("Activating bluetooth")
-            self.coordinator.speak("Aktiviere Bluetooth","de-de",True)
+            self.speak("Aktiviere Bluetooth","de-de",True)
             if self.isPoweredOn():
                 self.bluetooth.enable()
         else:
             self.logger.info("Deactivating bluetooth")
-            self.coordinator.speak("Deaktiviere Bluetooth","de-de",True)
+            self.speak("Deaktiviere Bluetooth","de-de",True)
             if self.isPoweredOn():
                 self.bluetooth.disable()
         
