@@ -441,9 +441,15 @@ class Coordinator(object):
             self.logger.info("Cannot speak if not powered on. Should have said: '%s'" % text)
             return
         if block:
-            self.textToSpeech.speak(text, lang)
+            self._speak(text, lang)
         else:
-            self._putJobIntoQueue(lambda: self.textToSpeech.speak(text, lang))
+            self._putJobIntoQueue(lambda: self._speak(text, lang))
+            
+    def _speak(self, text, lang):
+        if not self.isPoweredOn():
+            self.logger.info("Cannot speak if not powered on. Should have said: '%s'" % text)
+            return
+        self.textToSpeech.speak(text, lang)
     
     #todo: make this async
     def playSingleFile(self, file):
