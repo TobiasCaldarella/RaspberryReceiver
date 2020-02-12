@@ -51,6 +51,8 @@ class TuningWheel(object):
             self.logger.debug("wheel counterclockwise")
             if self.enabled:
                 if self.buttonModeActive:
+                    self.buttonModeTimer.cancel()
+                    self.buttonModeTimer = threading.Timer(10.0, self.do_button_timeout)
                     if self.buttonModeCounter > 0:
                         self.buttonModeCounter-=1
                 else:
@@ -65,6 +67,8 @@ class TuningWheel(object):
             self.logger.debug("wheel clockwise")
             if self.enabled:
                 if self.buttonModeActive:
+                    self.buttonModeTimer.cancel()
+                    self.buttonModeTimer = threading.Timer(10.0, self.do_button_timeout)
                     self.buttonModeCounter+=1
                 else:
                     self.coordinator.setChannel(channel=1, relative=True)

@@ -428,15 +428,19 @@ class Coordinator(object):
     
     def _setRadioState(self, state):
         self.logger.debug("setting radio state to '%s'" % state)
+        oldState = self.radioState
         self.radioState = state
-        self.playStateCnd.notify_all() # update done, notify
-        if (state == _RadioState.PLAYING):
-            self.gpioController.setStereolight(PowerState.ON)
-            self.gpioController.setNeedlelight(PowerState.ON)
-        elif (state == _RadioState.STOPPED):
-            self.gpioController.setStereolight(PowerState.OFF)  
-        elif (state == _RadioState.BLUETOOTH):
-            self.gpioController.setStereoBlink(active=True, pause_s=1)
+        
+        if oldState == state:
+            self.logger.debug("radio state was already '%s', not updating lights" % state)
+        else:
+            if (state == _RadioState.PLAYING):
+                self.gpioController.setStereolight(PowerState.ON)
+                self.gpioController.setNeedlelight(PowerState.ON)
+            elif (state == _RadioState.STOPPED):
+                self.gpioController.setStereolight(PowerState.OFF)  
+            elif (state == _RadioState.BLUETOOTH):
+                self.gpioController.setStereoBlink(active=True, pause_s=1)
         
     # mutes or unmutes radio (and maybe other sources like bluetooth in future?)    
     def mute(self, mute):
