@@ -430,6 +430,7 @@ class Coordinator(object):
         self.logger.debug("setting radio state to '%s'" % state)
         oldState = self.radioState
         self.radioState = state
+        self.playStateCnd.notify_all() # update done, notify
         
         if oldState == state:
             self.logger.debug("radio state was already '%s', not updating lights" % state)
