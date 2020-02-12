@@ -235,6 +235,7 @@ class MqttClient(object):
             self.logger.debug("Received payload on commands topic: '%s'", payload)
             commands = json.loads(payload);
             self.logger.info("Received commands: %s", commands)
+            self.coordinator.setSkipMqttUpdates(skip=True)
             if 'channel' in commands:
                 self.coordinator.setChannel(channel = int(commands['channel'])-1, relative = False, setIfPowerOff = True)  # channel starts at 0
             if 'volume' in commands:
@@ -263,7 +264,9 @@ class MqttClient(object):
             self.logger.warn("Invalid data over 'commands' topic received, must be a utf-8 json string with commands")
         except UnicodeDecodeError:
             self.logger.warn("Invalid data over 'commands' topic received, must be a utf-8 json string")
-    
+        # re-enable updates (will also send an update immediately
+        self.coordinator.setSkipMqttUpdates(False)
+        
     def on_subscribe(self, client, userdata, mid, granted_qos):
         pass
     

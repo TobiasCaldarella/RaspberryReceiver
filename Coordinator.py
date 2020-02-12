@@ -48,6 +48,7 @@ class Coordinator(object):
         self.textToSpeech = None
         self.workerThread = threading.Thread(target=self.do_work, name="Coordinator.WorkerThread")
         self.running = False
+        self.skipMqttUpdates = False
         self.job_queue = queue.Queue(30)
         
     def do_work(self):
@@ -110,12 +111,12 @@ class Coordinator(object):
             self.gpioController.setStereoBlink(active=True, pause_s=10)
             self.signal_strength_meter.disable()
             self.setBrightness(self.config.backlight_default_brightness)
-            self.mqttClient.publish_power_state(PowerState.OFF)
             self.powerState = _RadioPowerState.POWERED_DOWN
         self.sendStateToMqtt()
     
     def powerOn(self):
         self.logger.info("Power on requested...")
+        self.setSkipMqttUpdates(True)
         self._putJobIntoQueue(self._powerOn)
     
     def _powerOn(self):
@@ -133,8 +134,6 @@ class Coordinator(object):
             self.gpioController.setBacklight(PowerState.ON)
             self.gpioController.setStereolight(PowerState.OFF)
             self.gpioController.setPowerAndSpeaker(PowerState.ON)
-            if self.mqttClient is not None:
-                self.mqttClient.publish_power_state(PowerState.ON)
             self.mpdClient.startQueueHandler()
             self._radioStop()
             self.radioState = _RadioState.STOPPED
@@ -147,7 +146,7 @@ class Coordinator(object):
             self.wheel.enable()
         self.mpdClient.listener.notifyCoordinator = True # now we are ready to receive status updates
         self.mpdClient.setVolume(self.currentVolume) # and this just triggers an update of the mpd state so we can get a current status now
-        self.sendStateToMqtt()   
+        self.setSkipMqttUpdates(False) 
             
     def sleep(self, time_m):
         self.logger.info("Sleep requested...")
@@ -437,10 +436,7 @@ class Coordinator(object):
     
     def speak(self, text, lang, block=False):
         self.logger.debug("Speak '%s', lang '%s'" % (text, lang))
-        if not self.isPoweredOn():
-            self.logger.info("Cannot speak if not powered on. Should have said: '%s'" % text)
-            return
-        if block:
+        if block is True:
             self._speak(text, lang)
         else:
             self._putJobIntoQueue(lambda: self._speak(text, lang))
@@ -487,6 +483,9 @@ class Coordinator(object):
         if self.mqttClient:
             self.logger.debug("Sending current state to mqtt")
             with self.playStateCnd:
+                if self.skipMqttUpdates:
+                    self.logger.debug("Skipping MQTT update")
+                    return
                 radioState = self.radioState
                 currentChannel = self.currentChannel
                 currentVolume = self.currentVolume
@@ -500,7 +499,11 @@ class Coordinator(object):
                 bluetooth = self.bluetoothEnabled
                     
             self.mqttClient.pubInfo(radioState, currentChannel+1, currentVolume, currentSongInfo, numChannels, brightness, poweredOn, bluetooth)  # human-readable channel
-
+            if self.isPoweredOn():
+                self.mqttClient.publish_power_state(PowerState.ON)
+            else:
+                self.mqttClient.publish_power_state(PowerState.OFF)                
+            
     def setBrightness(self, brightness):
         self.logger.info("Setting brightness to %i" % brightness)
         if self.gpioController:
@@ -528,4 +531,16 @@ class Coordinator(object):
             self.speak("Deaktiviere Bluetooth","de-de",True)
             if self.isPoweredOn():
                 self.bluetooth.disable()
+    
+    def setSkipMqttUpdates(self, skip):
+        self.logger.debug("setSkipMqttUpdates(skip='%s')" % skip)
+        self._putJobIntoQueue(lambda: self._setSkipMqttUpdates(skip))
+                        
+    def _setSkipMqttUpdates(self, skip):
+        self.logger.debug("_setSkipMqttUpdates(skip='%s')" % skip)
+        with self.playStateCnd:
+            self.skipMqttUpdates = skip
+            
+        if self.skipMqttUpdates is False:
+            self.sendStateToMqtt()
         
