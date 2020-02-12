@@ -50,6 +50,7 @@ class Coordinator(object):
         self.running = False
         self.skipMqttUpdates = False
         self.job_queue = queue.Queue(30)
+        self.announceTimer = None
         
     def do_work(self):
         self.logger.debug("Worker thread started")
@@ -87,6 +88,8 @@ class Coordinator(object):
     
     def powerOff(self):
         self.logger.info("Power down requested...")
+        if self.announceTimer:
+            self.announceTimer.cancel()
         self._putJobIntoQueue(self._powerOff)
         
     def _powerOff(self):
@@ -251,6 +254,8 @@ class Coordinator(object):
     def setChannel(self, channel, relative = False, setIfPowerOff = False):
         self.logger.info("channel change requested (channel=%i, relative = %s)" % (channel, relative))
         with self.playStateCnd:
+            if self.announceTimer:
+                self.announceTimer.cancel()
             if self.needle.isMoving:
                 self.logger.debug("Needle already moving, only updating needle destination")
                 self.needle.setNeedleForChannel(ch=channel, relative=relative, drivingThread=False, mtx=self.playStateCnd)
@@ -326,6 +331,8 @@ class Coordinator(object):
     
     def radioStop(self):
         self.logger.info("radioStop requested")
+        if self.announceTimer:
+            self.announceTimer.cancel()
         self._putJobIntoQueue(self._radioStop)
     
     def _radioStop(self, waitForStop = True):
@@ -335,12 +342,16 @@ class Coordinator(object):
                 self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)    
     
     def __radioStop(self, needleLightOff=True):
+        if self.announceTimer:
+            self.announceTimer.cancel()
         self.mpdClient.stop()
         if needleLightOff:
             self.gpioController.setNeedlelight(PowerState.OFF)
         
     def radioPlay(self, announceChannel = False):
         self.logger.info("RadioPlay requested (announceChannel='%s')" % announceChannel)
+        if self.announceTimer:
+            self.announceTimer.cancel()
         self._putJobIntoQueue(lambda: self._radioPlay(announceChannel))
     
     def _radioPlay(self, announceChannel = False):
@@ -361,9 +372,12 @@ class Coordinator(object):
         if not self.isPoweredOn():
             self.logger.error("Will not start play, not in powered up state")
             return
+        if self.announceTimer:
+            self.announceTimer.cancel()
+            
         self.gpioController.setNeedlelight(PowerState.ON)
         self.mpdClient.setVolume(self.currentVolume)
-        self.mpdClient.playTitle(playlistPosition=self.currentChannel, muted=announceChannel)
+        self.mpdClient.playTitle(playlistPosition=self.currentChannel)
         if announceChannel:
             channelName = self.channels[self.currentChannel]
             lang='de-de'
@@ -372,12 +386,9 @@ class Coordinator(object):
                 lang = channelName[1]
                 channelName = channelName[0]
                 
-            self.playStateCnd.release()
-            self.textToSpeech.speak(text=channelName,lang=lang,mute=False)
-            self.playStateCnd.acquire()
-            self.waitForRadioState(desiredState=_RadioState.PLAYING, lock=self.playStateCnd)
-            self.mpdClient.mute(False)
-    
+            self.announceTimer = threading.Timer(self.config.announceTime_s, lambda: self.speak(text=channelName,lang=lang))
+            self.announceTimer.start()
+            
     def isPoweredOn(self):
         return (self.powerState is _RadioPowerState.POWERED_UP)
     
