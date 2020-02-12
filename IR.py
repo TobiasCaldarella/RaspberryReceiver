@@ -75,7 +75,7 @@ class IR(object):
         self.logger.info("Two digit input cancelled")
         if self.two_digit_timeout:
             self.two_digit_timeout.cancel()
-        self.coordinator.invertNeedleLightState(restore=True)
+        self.coordinator.blinkNeedleLight(blink=False)
         self.firstDigit = None
         self.twoDigitHandler = self.setChannelAtCoordinator
     
@@ -87,7 +87,7 @@ class IR(object):
         self.firstDigit = None
         if self.two_digit_timeout:
             self.two_digit_timeout.cancel()
-        self.coordinator.invertNeedleLightState(restore=True)
+        self.coordinator.blinkNeedleLight(blink=False)
         self.twoDigitHandler(value)
         self.twoDigitHandler = self.setChannelAtCoordinator
         
@@ -174,6 +174,7 @@ class IR(object):
                     self.logger.info("LIRC: 'mute'")
                     with self.twoDigitLock:
                         self.cancel_two_digit_input()
+                        self.coordinator.blinkNeedleLight()
                         self.coordinator.sleep(0) # cancel old sleep
                         self.twoDigitHandler = self.coordinator.sleep
                         self.two_digit_timeout = threading.Timer(10.0, self.do_two_digit_timeout)
@@ -188,8 +189,8 @@ class IR(object):
                         if self.firstDigit is None:
                             self.logger.info("LIRC: first digit: %i" % digit)
                             self.firstDigit = digit
-                            self.coordinator.invertNeedleLightState()
-                            self.two_digit_timeout = threading.Timer(2.0, self.do_two_digit_timeout)
+                            self.coordinator.blinkNeedleLight()
+                            self.two_digit_timeout = threading.Timer(3.0, self.do_two_digit_timeout)
                             self.two_digit_timeout.start()
                         else:
                             self.two_digit_timeout.cancel()

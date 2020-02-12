@@ -212,6 +212,13 @@ class GpioController(object):
         if self.needleLight is None:
             return
         self.needleLight.set(state, intensity)
+        
+    def setNeedleLightBlink(self, active=False, pause_s = 0, intensity = None):
+        self.logger.debug("StereoLight blink set to %s, pause %i" %(active, pause_s))
+        if active:
+            self.needleLight.blink(pause_s*1000, intensity)
+        else:
+            self.needleLight.set(PowerState.OFF, intensity)
             
     def enable_power_button(self):
         self.logger.debug("Power button enabled")
