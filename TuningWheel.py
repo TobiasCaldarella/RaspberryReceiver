@@ -77,6 +77,7 @@ class TuningWheel(object):
             return
         if self.buttonModeActive is True:
             self.buttonModeActive = False
+            self.coordinator.blinkNeedleLight(blink=False)
             self.buttonModeTimer.cancel()
             # do something with collected ticks
             self.coordinator.setChannel(self.buttonModeCounter-1) # channel starts at 0
@@ -84,11 +85,13 @@ class TuningWheel(object):
         else:
             self.buttonModeCounter = 0
             self.buttonModeActive = True
+            self.coordinator.blinkNeedleLight(blink=True)
             self.buttonModeTimer = threading.Timer(10.0, self.do_button_timeout)
             self.buttonModeTimer.start()
             
     def do_button_timeout(self):
         self.buttonModeActive = False
+        self.coordinator.blinkNeedleLight(blink=False)
         
     def do_enable(self):
         self.enabled = True
