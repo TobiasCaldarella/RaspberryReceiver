@@ -374,3 +374,6 @@ class MpdClient(object):
             self.logger.error("Caught exception in MpdClient.mute(): '%s'" % (sys.exc_info()[0]))
             return False
         
+    def setCoordinatorNotification(self, enabled):
+        self.logger.info("setCoordinatorNotification called with enabled=%s" % enabled)
+        self.listener.setNotifyCoordinator(enabled)

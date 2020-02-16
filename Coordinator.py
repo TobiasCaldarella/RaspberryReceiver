@@ -106,6 +106,7 @@ class Coordinator(object):
             self._radioStop()
             self.mpdClient.stopQueueHandler()
             self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd) # bluetooth and radio are stopped, wait for play state to become stopped
+            self.mpdClient.setCoordinatorNotification(False)
             self.logger.info("Powering down amp...")
             self.gpioController.setStereolight(PowerState.OFF)
             self.gpioController.setBacklight(PowerState.OFF)
@@ -119,7 +120,9 @@ class Coordinator(object):
     
     def powerOn(self):
         self.logger.info("Power on requested...")
-        self.setSkipMqttUpdates(True)
+        if self.isPoweredOn():
+            self.logger.info("Already powered on, not doing anything")
+            return            
         self._putJobIntoQueue(self._powerOn)
     
     def _powerOn(self):
@@ -128,28 +131,28 @@ class Coordinator(object):
             if self.sleepTimer:
                 self.sleepTimer.cancel()
             if self.powerState is not _RadioPowerState.POWERED_DOWN:
-                self.logger.debug("Not powered down, ignoring request")
-                return
-            self.logger.info("Powering up amp...")
-            self.powerState = _RadioPowerState.POWERING_UP
-            self.signal_strength_meter.enable()
-            self.setBrightness(self.config.backlight_default_brightness)
-            self.gpioController.setBacklight(PowerState.ON)
-            self.gpioController.setStereolight(PowerState.OFF)
-            self.gpioController.setPowerAndSpeaker(PowerState.ON)
-            self.mpdClient.startQueueHandler()
-            self._radioStop()
-            self.radioState = _RadioState.STOPPED
-            self.mpdClient.setVolume(self.currentVolume) # set this before accepting any feedback from mpd
-            self.needle.setNeedleForChannel(ch=self.currentChannel, relative=False, drivingThread=True, mtx=self.playStateCnd)
-            self.powerState = _RadioPowerState.POWERED_UP
-            self.radioPlay(announceChannel=False) # put this into queue 
-            if self.bluetoothEnabled:
-                self.bluetooth.enable()
-            self.wheel.enable()
-        self.mpdClient.listener.notifyCoordinator = True # now we are ready to receive status updates
+                self.logger.info("Not powered down, ignoring request")
+            else:
+                self.logger.info("Powering up amp...")
+                self.powerState = _RadioPowerState.POWERING_UP
+                self.signal_strength_meter.enable()
+                self.setBrightness(self.config.backlight_default_brightness)
+                self.gpioController.setBacklight(PowerState.ON)
+                self.gpioController.setStereolight(PowerState.OFF)
+                self.gpioController.setPowerAndSpeaker(PowerState.ON)
+                self.mpdClient.startQueueHandler()
+                self._radioStop()
+                self.radioState = _RadioState.STOPPED
+                self.mpdClient.setVolume(self.currentVolume) # set this before accepting any feedback from mpd
+                self.needle.setNeedleForChannel(ch=self.currentChannel, relative=False, drivingThread=True, mtx=self.playStateCnd)
+                self.powerState = _RadioPowerState.POWERED_UP
+                self.radioPlay(announceChannel=False) # put this into queue 
+                if self.bluetoothEnabled:
+                    self.bluetooth.enable()
+                self.wheel.enable()
+        self.mpdClient.setCoordinatorNotification(True) # now we are ready to receive status updates
         self.mpdClient.setVolume(self.currentVolume) # and this just triggers an update of the mpd state so we can get a current status now
-        self.setSkipMqttUpdates(False) 
+        self._setSkipMqttUpdates(False) 
             
     def sleep(self, time_m):
         self.logger.info("Sleep requested...")
@@ -497,7 +500,7 @@ class Coordinator(object):
             self.logger.debug("Sending current state to mqtt")
             with self.playStateCnd:
                 if self.skipMqttUpdates:
-                    self.logger.debug("Skipping MQTT update")
+                    self.logger.info("Skipping MQTT update (skipMqttUpdates=true)")
                     return
                 radioState = self.radioState
                 currentChannel = self.currentChannel
@@ -539,18 +542,19 @@ class Coordinator(object):
             self.speak("Aktiviere Bluetooth","de-de",True)
             if self.isPoweredOn():
                 self.bluetooth.enable()
+            else:
+                self.logger.info("Not powered on, not activating bluetooth")
         else:
             self.logger.info("Deactivating bluetooth")
             self.speak("Deaktiviere Bluetooth","de-de",True)
-            if self.isPoweredOn():
-                self.bluetooth.disable()
+            self.bluetooth.disable()
     
     def setSkipMqttUpdates(self, skip):
-        self.logger.debug("setSkipMqttUpdates(skip='%s')" % skip)
+        self.logger.info("setSkipMqttUpdates(skip='%s')" % skip)
         self._putJobIntoQueue(lambda: self._setSkipMqttUpdates(skip))
                         
     def _setSkipMqttUpdates(self, skip):
-        self.logger.debug("_setSkipMqttUpdates(skip='%s')" % skip)
+        self.logger.info("_setSkipMqttUpdates(skip='%s')" % skip)
         with self.playStateCnd:
             self.skipMqttUpdates = skip
             

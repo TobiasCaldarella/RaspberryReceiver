@@ -99,7 +99,7 @@ class MqttClient(object):
     
     def pubInfo(self, radioState, channel, volume, currentSongInfo, numChannelsInPlaylist, brightness, poweredOn, bluetooth):
         try:
-            self.logger.debug("Publishing status update")
+            self.logger.info("Publishing status update to mqtt")
             
             infoDict = currentSongInfo
             self.client.publish(self.config.mqtt_base_topic + "/volume", payload=str(volume))
@@ -245,11 +245,7 @@ class MqttClient(object):
                     self.coordinator.volumeDown()
                 else:
                     self.coordinator.setVolume(vol=int(commands['volume']), waitForPoti=True)
-            if 'power' in commands:
-                if commands['power'] == 'ON':
-                    self.coordinator.powerOn()
-                if commands['power'] == 'OFF':
-                    self.coordinator.powerOff()
+
             if 'speak' in commands:
                 if commands['speak'].find('|lang=') >= 0:
                     langAndText = commands['speak'].split('|lang=')
@@ -259,12 +255,16 @@ class MqttClient(object):
                     lang = 'de-de'
                     text = commands['speak']
                 self.coordinator.speak(text, lang)
-                    
+            if 'power' in commands:
+                if commands['power'] == 'ON':
+                    self.coordinator.powerOn() # powerOn will call setSkipMqttUpdates(False), so must be last command
+                if commands['power'] == 'OFF':
+                    self.coordinator.powerOff()
         except ValueError:
             self.logger.warn("Invalid data over 'commands' topic received, must be a utf-8 json string with commands")
         except UnicodeDecodeError:
             self.logger.warn("Invalid data over 'commands' topic received, must be a utf-8 json string")
-        # re-enable updates (will also send an update immediately
+        # re-enable updates (will also send an update immediately after all enqueued commands were executed)
         self.coordinator.setSkipMqttUpdates(False)
         
     def on_subscribe(self, client, userdata, mid, granted_qos):
