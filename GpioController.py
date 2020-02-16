@@ -165,11 +165,11 @@ class GpioController(object):
             time.sleep(1.0)
         else:
             self.pwmAsGpio(self.pin_pwr, GPIO.HIGH)
-            self.logger.info("Powered up")
+            self.logger.info("Amp Powered up")
             time.sleep(3.0)
             if self.pin_speakers is not None:
                 self.pwmAsGpio(self.pin_speakers, GPIO.HIGH)
-                self.logger.debug("Speakers on")
+                self.logger.info("Speakers on")
 
     def fade(self, pin, current, target, steps):
         self.logger.debug("pin %i current %i target %i" % (pin,current,target))
