@@ -174,7 +174,7 @@ class GpioController(object):
             self.pwmAsGpio(self.pin_pwr, GPIO.HIGH)
             self.logger.info("Amp Powered up")
             if self.pin_speakers is not None:
-                threading.Timer(interval=1.0, function=self._powerUpSpeakers).start()
+                threading.Timer(interval=2.0, function=self._powerUpSpeakers).start()
 
     def fade(self, pin, current, target, steps):
         self.logger.debug("pin %i current %i target %i" % (pin,current,target))
