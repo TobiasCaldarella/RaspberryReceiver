@@ -154,6 +154,10 @@ class GpioController(object):
         with self.pwmMtx:
             self.pwm.set_pwm(pin, int(4095-(onPercent/100*4095)), 4095)
         
+    def _powerUpSpeakers(self):
+        self.pwmAsGpio(self.pin_speakers, GPIO.HIGH)
+        self.logger.info("Speakers on")
+        
     def setPowerAndSpeaker(self, state: PowerState):
         if state is PowerState.OFF:
             if self.pin_speakers is not None:
@@ -162,14 +166,15 @@ class GpioController(object):
                 time.sleep(0.5)
             self.pwmAsGpio(self.pin_pwr, GPIO.LOW)
             self.logger.info("Powered down")
-            time.sleep(1.0)
+            time.sleep(0.5)
         else:
+            if self.pin_speakers is not None:
+                self.pwmAsGpio(self.pin_speakers, GPIO.LOW)
+                time.sleep(0.5)
             self.pwmAsGpio(self.pin_pwr, GPIO.HIGH)
             self.logger.info("Amp Powered up")
-            time.sleep(3.0)
             if self.pin_speakers is not None:
-                self.pwmAsGpio(self.pin_speakers, GPIO.HIGH)
-                self.logger.info("Speakers on")
+                threading.Timer(interval=1.0, function=self._powerUpSpeakers).start()
 
     def fade(self, pin, current, target, steps):
         self.logger.debug("pin %i current %i target %i" % (pin,current,target))
