@@ -20,6 +20,7 @@ import RPi.GPIO as GPIO
 import Bluetooth
 import TextToSpeech
 import SignalStrengthMeter
+import threading
 
 GPIO.cleanup()
 GPIO.setmode(GPIO.BCM)
@@ -46,13 +47,15 @@ if __name__ == '__main__':
     else:
         logger.info("MqttClient nont initialized since mqtt_server, mqtt_port and/or mqtt_base_topic are not set in configuration")
     
-    pwrcnt = GpioController.GpioController(config, coordinator)
+    i2cMtx = threading.Lock()
+    
+    pwrcnt = GpioController.GpioController(config, coordinator, i2cMtx)
     mpdClient = MpdClient.MpdClient(config, coordinator)
     needle = Needle.Needle(config, coordinator)
     bluetooth = Bluetooth.Bluetooth(config, coordinator)
     textToSpeech = TextToSpeech.TextToSpeech(config, coordinator)
     motorPoti = MotorPoti.MotorPoti(config, coordinator, pwrcnt)
-    signal_strength_meter = SignalStrengthMeter.SignalStrengthMeter(config, coordinator)
+    signal_strength_meter = SignalStrengthMeter.SignalStrengthMeter(config, coordinator, i2cMtx)
     coordinator.initialize()
     while True:
         logger.debug("-MARK-")

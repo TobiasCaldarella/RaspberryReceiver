@@ -8,22 +8,24 @@ import threading
 import time
 
 class PCF8591(object):
-    def __init__(self, config):
+    def __init__(self, config, i2cMtx):
         '''
         Constructor
         '''
         self.address = config.signal_strength_dac_address
         self.cmd = 0x40
         self.bus = smbus.SMBus(1)
+        self.i2cMtx = i2cMtx
         
     def send(self, value):
-        self.bus.write_byte_data(self.address,self.cmd,value)
+        with self.i2cMtx:
+            self.bus.write_byte_data(self.address,self.cmd,value)
         
 class SignalStrengthMeter(object):
-    def __init__(self, config, coordinator):
+    def __init__(self, config, coordinator, i2cMtx):
         self.t = None
         self.lastValue = None
-        self.dac = PCF8591(config)
+        self.dac = PCF8591(config, i2cMtx)
         self.run = True
         self.lastAvg = 0
         self.numCollectedValues = 0

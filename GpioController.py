@@ -10,6 +10,7 @@ import time
 import threading
 import Adafruit_PCA9685
 from Configuration import _RadioPowerState
+import logging
 
 class PowerState(Enum):
     ON = 1
@@ -102,7 +103,7 @@ class GpioController(object):
     
     # todo: pwr button must trigger coordinator action
 
-    def __init__(self, config: Configuration, coordinator):
+    def __init__(self, config: Configuration, coordinator, i2cMtx):
         '''
         Constructor
         '''
@@ -114,9 +115,11 @@ class GpioController(object):
         self.pin_pwr = config.pin_power
         self.pin_speakers = config.pin_speakers
         
-        self.pwmMtx = threading.Lock()
+        self.pwmMtx = i2cMtx
         self.pwm = Adafruit_PCA9685.PCA9685(address=0x40)
-        self.pwm.set_pwm_freq(100)
+        logging.getLogger("PCA9685").setLevel("INFO")
+        with self.pwmMtx:
+            self.pwm.set_pwm_freq(100)
         for pin in range(0,16):
             self.pwmAsGpio(pin, PowerState.OFF)
     
