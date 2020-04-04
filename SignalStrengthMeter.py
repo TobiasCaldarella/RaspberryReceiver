@@ -23,6 +23,7 @@ class PCF8591(object):
         
 class SignalStrengthMeter(object):
     def __init__(self, config, coordinator, i2cMtx):
+        self.logger = config.logger
         self.t = None
         self.lastValue = None
         self.dac = PCF8591(config, i2cMtx)
@@ -38,14 +39,17 @@ class SignalStrengthMeter(object):
         self.run = True
         if self.t is not None:
             return
+        self.logger.info("SignalStrenghtMeter enabled, thread starting...")
         self.t = threading.Thread(target=self.processStats)
         self.t.start()
     
     def disable(self):
+        self.logger.info("SignalStrenghtMeter stopping...")
         self.run = False
         self.t.join()
     
     def processStats(self):
+        self.logger.info("SignalStrenghtMeter thread started!")
         with open('/proc/net/dev') as f:
             for line in f:
                 if 'wlan0' in line:
@@ -64,6 +68,8 @@ class SignalStrengthMeter(object):
                 if not self.run:
                     break
         # write error log, should never ever exit
+        
+        self.logger.info("SignalStrenghtMeter thread ended")
         self.t = None
                     
                     
