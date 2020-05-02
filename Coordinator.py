@@ -32,7 +32,9 @@ class Coordinator(object):
         self.bluetoothEnabled = False
         self.needle = None
         self.wheel = None
+        self.volumeKnob = None
         self.poti = None
+        self.vcb = None
         self.logger = logger
         self.ir = None
         self.signal_strength_meter = None
@@ -42,6 +44,7 @@ class Coordinator(object):
         self.radioState = _RadioState.STOPPED
         self.powerState = _RadioPowerState.POWERED_DOWN
         self.currentVolume = 0
+        self.loudness = False
         self.sleepTimer = None
         self.playStateCnd = threading.Condition()
         self.currentSongInfo = {}
@@ -102,7 +105,11 @@ class Coordinator(object):
             if self.sleepTimer:
                 self.sleepTimer.cancel()
             self.bluetooth.disable(wait_for_stop = False)
-            self.wheel.disable()
+            if self.wheel:
+                self.wheel.disable()
+            if self.volumeKnob:
+                self.volumeKnob.disable()
+                
             self._radioStop()
             self.mpdClient.stopQueueHandler()
             self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd) # bluetooth and radio are stopped, wait for play state to become stopped
@@ -111,7 +118,8 @@ class Coordinator(object):
             self.gpioController.setStereolight(PowerState.OFF)
             self.gpioController.setBacklight(PowerState.OFF)
             self.gpioController.setNeedlelight(PowerState.OFF)
-            self.gpioController.setPowerAndSpeaker(PowerState.OFF)
+            self.gpioController.setPowerAndSpeaker(PowerState.OFF) # speakers disconnected, amp powered down. But there is still enough power in the capacitors for the volume control board to work and gracefully shut down
+            self.vcb.powerOff()
             self.gpioController.setStereoBlink(active=True, pause_s=10)
             self.signal_strength_meter.disable()
             self.setBrightness(self.config.backlight_default_brightness)
@@ -139,7 +147,12 @@ class Coordinator(object):
                 self.setBrightness(self.config.backlight_default_brightness)
                 self.gpioController.setBacklight(PowerState.ON)
                 self.gpioController.setStereolight(PowerState.OFF)
-                self.gpioController.setPowerAndSpeaker(PowerState.ON)
+                self.gpioController.setPowerAndSpeaker(PowerState.ON) #async, returns before speakers are connected but after amp has power
+                self.loudness = self.gpioController.getLoudnessEnabled()
+                self.bluetoothEnabled = self.gpioController.getBluetoothEnabled()
+                self.vcb.setLoudness(self.loudness)
+                self.vcb.setVolume(self.currentVolume)
+                self.vcb.powerOn()
                 self.mpdClient.startQueueHandler()
                 self._radioStop()
                 self.radioState = _RadioState.STOPPED
@@ -149,7 +162,11 @@ class Coordinator(object):
                 self.radioPlay(announceChannel=False) # put this into queue 
                 if self.bluetoothEnabled:
                     self.bluetooth.enable()
-                self.wheel.enable()
+                if self.wheel:
+                    self.wheel.enable()
+                if self.volumeKnob:
+                    self.volumeKnob.enable()
+                    
         self.mpdClient.setCoordinatorNotification(True) # now we are ready to receive status updates
         self.mpdClient.setVolume(self.currentVolume) # and this just triggers an update of the mpd state so we can get a current status now
         self._setSkipMqttUpdates(False) 
@@ -188,6 +205,9 @@ class Coordinator(object):
         self.connectWifi()
         if self.poti:
             self.poti.reset()
+        if self.vcb:
+            self.vcb.init()
+            
         # connect MPD client and load playlist
         if self.mpdClient.connect() is not True:
             self.logger.warn("Could not connect to MPD. Disabled...");
@@ -284,7 +304,8 @@ class Coordinator(object):
     
     def volumeUp(self):
         self.logger.info("volumeUp requested")
-        self.poti.moveCW(self.config.motorpoti_speed)
+        if self.poti:
+            self.poti.moveCW(self.config.motorpoti_speed)
         self._putJobIntoQueue(self._volumeUp)
                 
     def _volumeUp(self):
@@ -293,14 +314,18 @@ class Coordinator(object):
                 self.logger.info("not powered on, not changing volume")
                 return
             vol = self.currentVolume
-            vol+=10
+            vol+=1
             if vol > 100:
                 vol = 100
-            self.mpdClient.setVolume(vol)
+            if self.vcb:
+                self.vcb.setVolume(vol)
+            else:
+                self.mpdClient.setVolume(vol*(100/127))
             
     def volumeDown(self):
         self.logger.info("volumeDown requested")
-        self.poti.moveCCW(self.config.motorpoti_speed)
+        if self.poti:
+            self.poti.moveCCW(self.config.motorpoti_speed)
         self._putJobIntoQueue(self._volumeDown)
     
     def _volumeDown(self):
@@ -309,10 +334,13 @@ class Coordinator(object):
                 self.logger.info("not powered on, not changing volume")
                 return
             vol = self.currentVolume
-            vol-=10
+            vol-=1
             if vol < 0:
                 vol = 0
-            self.mpdClient.setVolume(vol)
+            if self.vcb:
+                self.vcb.setVolume(vol)
+            else:
+                self.mpdClient.setVolume(vol*(100/127))
     
     def setVolume(self, vol, waitForPoti = False):
         self.logger.info("setVolume requested (volume = %i)" % vol)
@@ -320,12 +348,15 @@ class Coordinator(object):
     
     def _setVolume(self, vol, waitForPoti):
         with self.playStateCnd:
-            if vol < 0 or vol > 100:
+            if vol < 0 or vol > 127:
                 self.logger.warn("Received invalid volume: %i", vol)
             else:
                 if self.isPoweredOn():
                     self.mpdClient.setVolume(vol)
-                self.poti.set(vol, waitForPoti)
+                if self.poti:
+                    self.poti.set(vol, waitForPoti)
+                if self.vcb:
+                    self.vcb.setVolume(vol)
                 self.currentVolume = vol
         self.sendStateToMqtt()
     
@@ -560,4 +591,10 @@ class Coordinator(object):
             
         if self.skipMqttUpdates is False:
             self.sendStateToMqtt()
+            
+    def setLoudness(self, state):
+        self.logger.info("Loudness set to %i" % state)
+        self.loudness = state
+        if self.vcb:
+            self.vcb.setLoudness(state)
         

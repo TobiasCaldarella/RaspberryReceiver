@@ -21,6 +21,8 @@ import Bluetooth
 import TextToSpeech
 import SignalStrengthMeter
 import threading
+import VolumeControlBoard
+import VolumeKnobRotaryEncoder
 
 GPIO.cleanup()
 GPIO.setmode(GPIO.BCM)
@@ -54,7 +56,13 @@ if __name__ == '__main__':
     needle = Needle.Needle(config, coordinator)
     bluetooth = Bluetooth.Bluetooth(config, coordinator)
     textToSpeech = TextToSpeech.TextToSpeech(config, coordinator)
-    motorPoti = MotorPoti.MotorPoti(config, coordinator, pwrcnt)
+    #motorPoti = MotorPoti.MotorPoti(config, coordinator, pwrcnt)
+    vcb = VolumeControlBoard.VolumeControlBoard(config, coordinator, i2cMtx)
+    if (config.gpio_vol_right and config.gpio_vol_left):
+        volumeKnob = VolumeKnobRotaryEncoder.VolumeKnobRotaryEncoder(config, coordinator)
+    else:
+        logger.info("Not initializing VolumeKnob since gpio_vol_right and/or gpio_vol_left are not set in configuration")
+    
     signal_strength_meter = SignalStrengthMeter.SignalStrengthMeter(config, coordinator, i2cMtx)
     coordinator.initialize()
     while True:

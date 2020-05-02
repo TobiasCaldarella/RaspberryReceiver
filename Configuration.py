@@ -51,15 +51,26 @@ class Configuration(object):
         self.motorpoti_defaultIntervall_ms = 160
         self.motorpoti_speed = 30
         
-        # GPIOs tuning wheel mag sensors
+        # Volume Control Board
+        self.volPotiAddress = 0x28
+        self.ldsPotiAddress = 0x29
+        self.vcbPortMpxAddress = 0x20
+        self.loudnessPoint = 25
+        
+        # GPIOs tuning wheel rotary encoder
         self.gpio_mag_left = 24
         self.gpio_mag_right = 4
         self.wheel_button = 14
+        
+        # GPIOs volume knob rotary encoder
+        self.gpio_vol_right = 5
+        self.gpio_vol_left = 12
 
         # GPIOs switches and buttons
         self.gpio_pwr_btn = 9
         #self.gpio_ukw_mute = 16
         self.gpio_bluetooth_enabled = 15
+        self.gpio_loudness_enabled = 7
         
         # MPD stuff
         self.mpd_radio_playlist = "http://local_pub.openhabianpi/radio.m3u"

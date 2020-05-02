@@ -50,6 +50,7 @@ class SignalStrengthMeter(object):
     
     def processStats(self):
         self.logger.info("SignalStrenghtMeter thread started!")
+        logCounter = 0
         with open('/proc/net/dev') as f:
             for line in f:
                 if 'wlan0' in line:
@@ -60,7 +61,12 @@ class SignalStrengthMeter(object):
                         self.lastAvg = 0.9*self.lastAvg + 0.1*diff
                         #if self.numCollectedValues < 99:
                         #    self.numCollectedValues = self.numCollectedValues + 1
-                        self.logger.debug("SignalStrengthMeter value %i" % self.lastAvg)
+                        if logCounter is 100:
+                            self.logger.debug("SignalStrengthMeter value %i" % self.lastAvg)
+                            logCounter = 0
+                        else:
+                            logCounter = logCounter + 1
+                            
                         self.dac.send(min(int(self.lastAvg),255))
                     self.lastValue = newValue
                     f.seek(0)

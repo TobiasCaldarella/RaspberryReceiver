@@ -111,6 +111,7 @@ class GpioController(object):
         self.logger.info("GpioController initializing...")
         self.gpio_pwr_btn = config.gpio_pwr_btn
         self.gpio_bluetooth_enabled = config.gpio_bluetooth_enabled
+        self.gpio_loudness_enabled = config.gpio_loudness_enabled
         
         self.pin_pwr = config.pin_power
         self.pin_speakers = config.pin_speakers
@@ -138,10 +139,11 @@ class GpioController(object):
         #    if pin is not None:
         #        GPIO.setup(pin, GPIO.OUT, initial = GPIO.HIGH)
         
-        for pin in [ self.gpio_pwr_btn, self.gpio_bluetooth_enabled ]:
+        for pin in [ self.gpio_pwr_btn, self.gpio_bluetooth_enabled, self.gpio_loudness ]:
             if pin is not None:
                 GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        GPIO.add_event_detect(self.gpio_bluetooth_enabled, GPIO.BOTH, callback=self.do_bluetooth_switch, bouncetime=30)    
+        GPIO.add_event_detect(self.gpio_bluetooth_enabled, GPIO.BOTH, callback=self.do_bluetooth_switch, bouncetime=100) 
+        GPIO.add_event_detect(self.gpio_loudness_enabled, GPIO.BOTH, callback=self.do_loudness_switch, bouncetime=100)    
         
         self.backlightDefaultIntensity = config.backlight_default_brightness
         self.logger.info("GpioController initialized")
@@ -236,6 +238,12 @@ class GpioController(object):
         self.logger.debug("Power button disabled")
         GPIO.remove_event_detect(self.gpio_pwr_btn)
         
+    def getLoudnessEnabled(self):
+        return (GPIO.input(self.gpio_loudness_enabled) == GPIO.LOW)
+    
+    def getBluetoothEnabled(self):
+        return (GPIO.input(self.gpio_bluetooth_enabled) == GPIO.LOW)
+        
     def do_bluetooth_switch(self, ch):
         state = GPIO.input(self.gpio_bluetooth_enabled)
         time.sleep(0.05)
@@ -253,6 +261,21 @@ class GpioController(object):
         else:
             self.coordinator.bluetoothControl(True)
         
+    def do_loudness_switch(self, ch):
+        state = GPIO.input(self.gpio_bluetooth_enabled)
+        time.sleep(0.05)
+        if GPIO.input(self.gpio_bluetooth_enabled) != state:
+            self.logger.debug("Spurious loudness switch interrupt, ignored.")
+            return
+        time.sleep(0.05)
+        if GPIO.input(self.gpio_bluetooth_enabled) != state:
+            self.logger.debug("Spurious loudness switch interrupt, ignored.")
+            return
+        self.logger.info("Loudness switch = %s" % state)
+        if state == GPIO.HIGH:
+            self.coordinator.setLoudness(False)
+        else:
+            self.coordinator.setLoudness(True)
         
     def do_power_button(self, ch):
         if GPIO.input(self.gpio_pwr_btn) != GPIO.LOW:
