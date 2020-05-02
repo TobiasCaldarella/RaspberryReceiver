@@ -60,7 +60,7 @@ class SignalStrengthMeter(object):
                         self.lastAvg = 0.9*self.lastAvg + 0.1*diff
                         #if self.numCollectedValues < 99:
                         #    self.numCollectedValues = self.numCollectedValues + 1
-                            
+                        self.logger.debug("SignalStrengthMeter value %i" % self.lastAvg)
                         self.dac.send(min(int(self.lastAvg),255))
                     self.lastValue = newValue
                     f.seek(0)

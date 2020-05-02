@@ -85,5 +85,5 @@ class Configuration(object):
         self.stereo_default_brightness= 100
         self.announceTime_s = 2.0
         
-        self.signal_strength_dac_address = 0x40
+        self.signal_strength_dac_address = 0x48
         
