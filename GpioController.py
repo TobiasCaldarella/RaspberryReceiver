@@ -139,7 +139,7 @@ class GpioController(object):
         #    if pin is not None:
         #        GPIO.setup(pin, GPIO.OUT, initial = GPIO.HIGH)
         
-        for pin in [ self.gpio_pwr_btn, self.gpio_bluetooth_enabled, self.gpio_loudness ]:
+        for pin in [ self.gpio_pwr_btn, self.gpio_bluetooth_enabled, self.gpio_loudness_enabled ]:
             if pin is not None:
                 GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.add_event_detect(self.gpio_bluetooth_enabled, GPIO.BOTH, callback=self.do_bluetooth_switch, bouncetime=100) 
@@ -178,8 +178,9 @@ class GpioController(object):
                 time.sleep(0.5)
             self.pwmAsGpio(self.pin_pwr, GPIO.HIGH)
             self.logger.info("Amp Powered up")
+            time.sleep(0.5)
             if self.pin_speakers is not None:
-                threading.Timer(interval=2.0, function=self._powerUpSpeakers).start()
+                threading.Timer(interval=1.5, function=self._powerUpSpeakers).start()
 
     def fade(self, pin, current, target, steps):
         self.logger.debug("pin %i current %i target %i" % (pin,current,target))
@@ -245,16 +246,20 @@ class GpioController(object):
         return (GPIO.input(self.gpio_bluetooth_enabled) == GPIO.LOW)
         
     def do_bluetooth_switch(self, ch):
-        state = GPIO.input(self.gpio_bluetooth_enabled)
+        cancel = False
+        state = GPIO.input(self.gpio_bluetooth_enabled) 
         time.sleep(0.05)
         if GPIO.input(self.gpio_bluetooth_enabled) != state:
             self.logger.debug("Spurious bt switch interrupt, ignored.")
-            return
+            cancel = True
         time.sleep(0.05)
-        if GPIO.input(self.gpio_bluetooth_enabled) != state:
+        if cancel == False and GPIO.input(self.gpio_bluetooth_enabled) != state:
             self.logger.debug("Spurious bt switch interrupt, ignored.")
+            cancel = True
+        if cancel:
+            t=threading.Timer(0.3, function=lambda: self.do_bluetooth_switch(ch))
+            t.start()
             return
-        
         self.logger.info("Bluetooth switch = %s" % state)
         if state == GPIO.HIGH:
             self.coordinator.bluetoothControl(False)
@@ -262,14 +267,19 @@ class GpioController(object):
             self.coordinator.bluetoothControl(True)
         
     def do_loudness_switch(self, ch):
-        state = GPIO.input(self.gpio_bluetooth_enabled)
+        cancel = False
+        state = GPIO.input(self.gpio_loudness_enabled)
         time.sleep(0.05)
-        if GPIO.input(self.gpio_bluetooth_enabled) != state:
+        if GPIO.input(self.gpio_loudness_enabled) != state:
             self.logger.debug("Spurious loudness switch interrupt, ignored.")
-            return
+            cancel = True
         time.sleep(0.05)
-        if GPIO.input(self.gpio_bluetooth_enabled) != state:
+        if cancel == False and GPIO.input(self.gpio_loudness_enabled) != state:
             self.logger.debug("Spurious loudness switch interrupt, ignored.")
+            cancel = True
+        if cancel:
+            t=threading.Timer(0.3, function=lambda: self.do_loudness_switch(ch))
+            t.start()
             return
         self.logger.info("Loudness switch = %s" % state)
         if state == GPIO.HIGH:

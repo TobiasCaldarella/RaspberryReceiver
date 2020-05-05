@@ -55,7 +55,7 @@ class Configuration(object):
         self.volPotiAddress = 0x28
         self.ldsPotiAddress = 0x29
         self.vcbPortMpxAddress = 0x20
-        self.loudnessPoint = 25
+        self.loudnessPoint = 40
         
         # GPIOs tuning wheel rotary encoder
         self.gpio_mag_left = 24
@@ -63,8 +63,8 @@ class Configuration(object):
         self.wheel_button = 14
         
         # GPIOs volume knob rotary encoder
-        self.gpio_vol_right = 5
-        self.gpio_vol_left = 12
+        self.gpio_vol_right = 12
+        self.gpio_vol_left = 5
 
         # GPIOs switches and buttons
         self.gpio_pwr_btn = 9

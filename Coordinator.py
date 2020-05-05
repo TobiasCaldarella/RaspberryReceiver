@@ -319,6 +319,7 @@ class Coordinator(object):
                 vol = 100
             if self.vcb:
                 self.vcb.setVolume(vol)
+                self.currentVolume = vol
             else:
                 self.mpdClient.setVolume(vol*(100/127))
             
@@ -339,6 +340,7 @@ class Coordinator(object):
                 vol = 0
             if self.vcb:
                 self.vcb.setVolume(vol)
+                self.currentVolume = vol
             else:
                 self.mpdClient.setVolume(vol*(100/127))
     

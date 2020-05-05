@@ -6,6 +6,7 @@ Created on 25.01.2020
 import smbus
 import sys
 import threading
+import time
 from Coordinator import Coordinator
 from Configuration import Configuration, _RadioPowerState
 
@@ -27,37 +28,41 @@ class I2cThing(object):
         with self.i2cMtx:
             return self.bus.read_byte(self.address)
 
-class DS1882(object):
+class DS1882(I2cThing):
     def __init__(self, logger, address, i2cMtx):
         super().__init__(logger, address, i2cMtx)
         self.potiConfig = 0x86
+        self.logger = logger
 
     def init(self):
-        super().send(self.potiConfig)
+        super()._send(self.potiConfig)
         
     def setPoti(self, volume):
         if volume <= 0x3f:
             val = 0x3f - volume
-            super().logger.debug("Setting poti @%x to: %x" % (self.address, val))
+            self.logger.debug("Setting poti @%x to: %x" % (self.address, val))
             super()._send(0x00 + val)
             super()._send(0x40 + val)
         else:
-            super().logger.error("Invalid value: %x" % volume)
+            self.logger.error("Invalid value: %x" % volume)
         
 class PCF8574(I2cThing):
     def __init__(self, logger, address, i2cMtx):
         super().__init__(logger, address, i2cMtx)
-     
+        self.logger = logger
+        self.downMask = 0x0
+
     def setPin(self, pin, value):
-        if pin < 7:
-            super().logger.error("Pin %i invalid!" % pin)
+        if pin > 7:
+            self.logger.error("Pin %i invalid!" % pin)
             return
         
-        val = super()._read()
         if value is False:
-            val = val & ~(1 << pin)
+            self.downMask = self.downMask | (1<<pin)
         else:
-            val = val | (1 << pin)
+            self.downMask = self.downMask & ~(1<<pin) & 0xff
+        val = ~self.downMask & 0xff
+        self.logger.info("sending %x" % val)
         super()._send(val)
     
     def init(self):
@@ -75,7 +80,8 @@ class VolumeControlBoard(object):
         self.mpx = PCF8574(self.logger, config.vcbPortMpxAddress, i2cMtx)
         self.powerPinHigh = 7
         self.powerPinLow = 6
-        self.i2cEnablePinLow = 1
+        self.i2cEnablePinLow = 0
+        self.i2cLoudnessRelaisPinLow = 3
         self.loudnessEnabled = False
         self.currentVolume = 0
         self.poweredOn = False
@@ -91,8 +97,9 @@ class VolumeControlBoard(object):
         with self.mtx:
             self.mpx.setPin(self.powerPinHigh, True)
             self.mpx.setPin(self.powerPinLow, False)
-            self.poweredOn = True
+            time.sleep(0.1)
             self._updateVolume()
+            self.poweredOn = True # set after updateVolume to trigger poti init
             self.logger.info("VCB powered on")
         
     def powerOff(self):
@@ -107,9 +114,16 @@ class VolumeControlBoard(object):
     def _updateVolume(self):
         try:
             self.mpx.setPin(self.i2cEnablePinLow, False)
+            time.sleep(0.1)
+            if self.poweredOn is False:
+                self.volPoti.init()
+                self.ldsPoti.init()
             ldsVal = 0
             if self.loudnessEnabled is True and self.currentVolume > 0:
-                ldsVal = abs(self.loudnessPoint - self.currentVolume)
+                ldsVal = 63 - abs(self.loudnessPoint - self.currentVolume)
+                self.mpx.setPin(self.i2cLoudnessRelaisPinLow, False)
+            else:
+                self.mpx.setPin(self.i2cLoudnessRelaisPinLow, True)
             self.volPoti.setPoti(self.currentVolume)
             self.ldsPoti.setPoti(ldsVal)
             self.logger.info("VCB set values: volume %i, loudness %i" % (self.currentVolume, ldsVal))
