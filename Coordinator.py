@@ -335,13 +335,13 @@ class Coordinator(object):
     def __setVcbAndMpdVolume(self, vol):
         mpdVolume = 100
         vcbVolume = vol
-        if vol <= 0:
-            if vol > -9:
-                mpdVolume = 100 + (vol - 1) * 10
-                vcbVolume = 1
-            else:
-                mpdVolume = 0
-                vcbVolume = 0
+        #if vol <= 0:
+        #    if vol > -9:
+        #        mpdVolume = 100 + (vol - 1) * 10
+        #        vcbVolume = 1
+        #    else:
+        #        mpdVolume = 0
+        #        vcbVolume = 0
             
         self.mpdClient.setVolume(mpdVolume)
         self.vcb.setVolume(vcbVolume)
