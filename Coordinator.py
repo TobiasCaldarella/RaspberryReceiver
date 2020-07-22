@@ -43,7 +43,7 @@ class Coordinator(object):
         self.needleStepsPerChannel = 0
         self.radioState = _RadioState.STOPPED
         self.powerState = _RadioPowerState.POWERED_DOWN
-        self.currentVolume = 0
+        self.currentVolume = 1
         self.loudness = False
         self.sleepTimer = None
         self.playStateCnd = threading.Condition()
@@ -306,43 +306,61 @@ class Coordinator(object):
         self.logger.info("volumeUp requested")
         if self.poti:
             self.poti.moveCW(self.config.motorpoti_speed)
-        self._putJobIntoQueue(self._volumeUp)
-                
+        #self._putJobIntoQueue(self._volumeUp)
+        self._volumeUp()
+
     def _volumeUp(self):
-        with self.playStateCnd:
+        #with self.playStateCnd:
             if not self.isPoweredOn():
                 self.logger.info("not powered on, not changing volume")
                 return
             vol = self.currentVolume
             vol+=1
-            if vol > 100:
-                vol = 100
+            if vol > 63:
+                vol = 63
+                self.logger.debug("maximum volume reached")
             if self.vcb:
-                self.vcb.setVolume(vol)
+                self.__setVcbAndMpdVolume(vol)
                 self.currentVolume = vol
             else:
-                self.mpdClient.setVolume(vol*(100/127))
+                self.mpdClient.setVolume(vol*(100/63))
             
     def volumeDown(self):
         self.logger.info("volumeDown requested")
         if self.poti:
             self.poti.moveCCW(self.config.motorpoti_speed)
-        self._putJobIntoQueue(self._volumeDown)
-    
+        #self._putJobIntoQueue(self._volumeDown)
+        self._volumeDown()
+        
+    def __setVcbAndMpdVolume(self, vol):
+        mpdVolume = 100
+        vcbVolume = vol
+        if vol <= 0:
+            if vol > -9:
+                mpdVolume = 100 + (vol - 1) * 10
+                vcbVolume = 1
+            else:
+                mpdVolume = 0
+                vcbVolume = 0
+            
+        self.mpdClient.setVolume(mpdVolume)
+        self.vcb.setVolume(vcbVolume)
+
     def _volumeDown(self):
-        with self.playStateCnd:
+        #with self.playStateCnd:
             if not self.isPoweredOn():
                 self.logger.info("not powered on, not changing volume")
                 return
             vol = self.currentVolume
             vol-=1
             if vol < 0:
+                self.logger.debug("minimum volume reached")
                 vol = 0
             if self.vcb:
-                self.vcb.setVolume(vol)
+                self.__setVcbAndMpdVolume(vol)
                 self.currentVolume = vol
             else:
-                self.mpdClient.setVolume(vol*(100/127))
+                self.mpdClient.setVolume(vol*(100/63))
     
     def setVolume(self, vol, waitForPoti = False):
         self.logger.info("setVolume requested (volume = %i)" % vol)
@@ -350,7 +368,7 @@ class Coordinator(object):
     
     def _setVolume(self, vol, waitForPoti):
         with self.playStateCnd:
-            if vol < 0 or vol > 127:
+            if vol < 0 or vol > 63:
                 self.logger.warn("Received invalid volume: %i", vol)
             else:
                 if self.isPoweredOn():
@@ -358,7 +376,7 @@ class Coordinator(object):
                 if self.poti:
                     self.poti.set(vol, waitForPoti)
                 if self.vcb:
-                    self.vcb.setVolume(vol)
+                    self.__setVcbAndMpdVolume(vol)
                 self.currentVolume = vol
         self.sendStateToMqtt()
     
@@ -409,7 +427,11 @@ class Coordinator(object):
             self.announceTimer.cancel()
             
         self.gpioController.setNeedlelight(PowerState.ON)
-        self.mpdClient.setVolume(self.currentVolume)
+        
+        mpdVolume = 100
+        if self.currentVolume < 1:
+            mpdVolume = mpdVolume - (self.currentVolume - 1) * 10
+        self.mpdClient.setVolume(mpdVolume)
         self.mpdClient.playTitle(playlistPosition=self.currentChannel)
         if announceChannel:
             channelName = self.channels[self.currentChannel]
@@ -508,8 +530,8 @@ class Coordinator(object):
     def currentlyPlaying(self, mpdPlaying = None, channel = None, volume = None, currentSongInfo = None):
         self.logger.debug("updating coordinator-state...")
         with self.playStateCnd:
-            if volume is not None:
-                self.currentVolume = volume
+            #if volume is not None:
+                #self.currentVolume = volume
             
             if self.radioState is not _RadioState.BLUETOOTH:
                 if mpdPlaying is True:

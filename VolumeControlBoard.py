@@ -73,6 +73,7 @@ class VolumeControlBoard(object):
         self.mtx = threading.Lock()
         self.logger = config.logger
         self.loudnessPoint = config.loudnessPoint
+        self.maxLoudness = config.maxLoudness
         coordinator.vcb = self
         self.coordinator = coordinator
         self.volPoti = DS1882(self.logger, config.volPotiAddress, i2cMtx)
@@ -97,7 +98,7 @@ class VolumeControlBoard(object):
         with self.mtx:
             self.mpx.setPin(self.powerPinHigh, True)
             self.mpx.setPin(self.powerPinLow, False)
-            time.sleep(0.1)
+            time.sleep(0.3)
             self._updateVolume()
             self.poweredOn = True # set after updateVolume to trigger poti init
             self.logger.info("VCB powered on")
@@ -114,13 +115,17 @@ class VolumeControlBoard(object):
     def _updateVolume(self):
         try:
             self.mpx.setPin(self.i2cEnablePinLow, False)
-            time.sleep(0.1)
+            time.sleep(0.01)
             if self.poweredOn is False:
                 self.volPoti.init()
                 self.ldsPoti.init()
             ldsVal = 0
             if self.loudnessEnabled is True and self.currentVolume > 0:
-                ldsVal = 63 - abs(self.loudnessPoint - self.currentVolume)
+                diffFromPoint = self.loudnessPoint - self.currentVolume
+                if diffFromPoint > 0:
+                    ldsVal = max(int(self.maxLoudness - (diffFromPoint*1.5)), self.currentVolume)
+                else:
+                    ldsVal = self.maxLoudness - (-diffFromPoint)
                 self.mpx.setPin(self.i2cLoudnessRelaisPinLow, False)
             else:
                 self.mpx.setPin(self.i2cLoudnessRelaisPinLow, True)
@@ -133,6 +138,13 @@ class VolumeControlBoard(object):
             self.mpx.setPin(self.i2cEnablePinLow, True)
         
     def setVolume(self, volume):
+        if volume < 0:
+            self.logger.error("VCB: volume % is invalid. using 0!" % volume)
+            volume = 0
+        if volume > 63:
+            self.logger.error("VCB: volume % is invalid. using 63!" % volume)
+            volume = 63
+         
         with self.mtx:
             self.currentVolume = volume
             if self.poweredOn is True:

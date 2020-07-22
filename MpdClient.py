@@ -92,8 +92,8 @@ class MpdClientEventListener(object):
                     self.config.logger.info("MPD playing currentSongInfo: %s" % json.dumps(currentSongInfo))
                     self.config.logger.debug("MPD playing stats: %s" % json.dumps(stat))                                 
                     playing = True
-                    #if ('volume' not in stat or int(stat['volume']) is None):
-                    if (False):
+                    if ('volume' not in stat or int(stat['volume']) is None):
+                        #if (False):
                         self.config.logger.info("However, no volume control was available. Pause and restart, maybe soundcard/mixer was not ready?")
                         if alreadyRestarted < time.time()-10:
                             alreadyRestarted = time.time()
@@ -122,14 +122,12 @@ class MpdClientEventListener(object):
                 else:
                     self.logger.error("Not restarting, playback failed, already restarted @%i" % alreadyRestarted)
                     self.status['error'] = True
-            
+                
             if self.coordinator:
                 currentSongId = None
                 currentVolume = None
                 if 'song' in stat:
                     currentSongId = int(stat['song'])
-                if 'volume' in stat and self.config.mpd_change_volume:
-                    currentVolume = int(stat['volume'])
                 if self.notifyCoordinator:
                     self.coordinator.currentlyPlaying(mpdPlaying=playing, channel=currentSongId, 
                                                   volume=currentVolume, currentSongInfo=currentSongInfo)
@@ -206,6 +204,7 @@ class MpdClient(object):
         self.listener = MpdClientEventListener(config, coordinator)
         self.queue = queue.Queue(100)
         self.queueHandlerThread = None
+        self.mpdVolume = 100
         
     def connect(self):
         self.listener.startListener()
@@ -301,9 +300,13 @@ class MpdClient(object):
             return False            
     
     def setVolume(self, vol):
-        if self.config.mpd_change_volume is False:
-            self.logger.debug("mpd_change_volume is False, not setting global volume via mpd")
+        #if self.config.mpd_change_volume is False:
+        #    self.logger.debug("mpd_change_volume is False, not setting global volume via mpd")
+        #    return
+        if vol is self.mpdVolume:
+            self.logger.debug("Volume already at %d" % vol)
             return
+            
         self.logger.info("putting setVolume(%i) into queue..." % vol)
         try:
             self.queue.put(item= lambda: self._setVolume(vol), block = True, timeout=0.5)
@@ -317,6 +320,7 @@ class MpdClient(object):
         with self.connection:
             try:
                 self.client.send_setvol(vol)
+                self.mpdVolume = vol
                 return True
             except:
                 self.logger.error("Caught exception in MpdClient.setVolume(): '%s'" % (sys.exc_info()[0]))
@@ -346,7 +350,7 @@ class MpdClient(object):
                 self.client.send_play(playlistPosition)
                 if not muted:
                     if self.config.mpd_change_volume is False:
-                        for vol in range(20,81,20):
+                        for vol in range(20,self.mpdVolume+1,20):
                             self.client.send_setvol(vol)
                             time.sleep(0.2)
                 self.logger.info("...play sent!")
@@ -362,12 +366,12 @@ class MpdClient(object):
             with self.connection:
                 if muted == True:
                     if self.config.mpd_change_volume is False:
-                        for vol in range(60,-1,-10):
+                        for vol in range(self.mpdVolume-20,-1,-10):
                             self.client.send_setvol(vol)
                             time.sleep(0.1)
                 else:
                     if self.config.mpd_change_volume is False:
-                        for vol in range(20,81,10):
+                        for vol in range(20,self.mpdVolume+1,10):
                             self.client.send_setvol(vol)
                             time.sleep(0.1)
         except:
