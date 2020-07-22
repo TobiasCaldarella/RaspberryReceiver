@@ -441,7 +441,7 @@ class Coordinator(object):
                 lang = channelName[1]
                 channelName = channelName[0]
                 
-            self.announceTimer = threading.Timer(self.config.announceTime_s, lambda: self.speak(text=channelName,lang=lang))
+            self.announceTimer = threading.Timer(self.config.announceTime_s, lambda: self.speak(text=channelName,lang=lang, block=True))
             self.announceTimer.start()
             
     def isPoweredOn(self):
