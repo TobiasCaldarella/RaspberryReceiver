@@ -372,11 +372,12 @@ class Coordinator(object):
                 self.logger.warn("Received invalid volume: %i", vol)
             else:
                 if self.isPoweredOn():
-                    self.mpdClient.setVolume(vol)
-                if self.poti:
-                    self.poti.set(vol, waitForPoti)
-                if self.vcb:
-                    self.__setVcbAndMpdVolume(vol)
+                    if self.vcb:
+                        self.__setVcbAndMpdVolume(vol)
+                    elif self.poti:
+                        self.poti.set(vol, waitForPoti)
+                    else:
+                        self.mpdClient.setVolume(vol)
                 self.currentVolume = vol
         self.sendStateToMqtt()
     
