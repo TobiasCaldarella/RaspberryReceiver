@@ -23,6 +23,7 @@ import SignalStrengthMeter
 import threading
 import VolumeControlBoard
 import VolumeKnobRotaryEncoder
+import RygelDlnaRenderer
 
 GPIO.cleanup()
 GPIO.setmode(GPIO.BCM)
@@ -56,6 +57,7 @@ if __name__ == '__main__':
     needle = Needle.Needle(config, coordinator)
     bluetooth = Bluetooth.Bluetooth(config, coordinator)
     textToSpeech = TextToSpeech.TextToSpeech(config, coordinator)
+    dlnaRenderer = RygelDlnaRenderer.RygelDlnaRenderer(config, coordinator)
     #motorPoti = MotorPoti.MotorPoti(config, coordinator, pwrcnt)
     vcb = VolumeControlBoard.VolumeControlBoard(config, coordinator, i2cMtx)
     if (config.gpio_vol_right and config.gpio_vol_left):

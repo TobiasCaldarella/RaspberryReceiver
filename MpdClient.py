@@ -12,6 +12,7 @@ import json
 import queue
 from time import sleep
 from Configuration import _RadioState
+from enum import Enum
 
 class _Connection:
     def __init__(self, parent):
@@ -184,6 +185,10 @@ class MpdClientEventListener(object):
         if self.listenerThread.is_alive():
             self.listenerThread.join(timeout=2)
 
+class eStates(Enum):
+    STOPPED = 0,
+    PLAYED = 1,
+    FAILED = 2
 
 class MpdClient(object):
     '''
@@ -344,6 +349,7 @@ class MpdClient(object):
     def _playTitle(self, playlistPosition, muted):
         self.logger.info("starting play...")
         self.coordinator.currentlyPlaying(mpdPlaying=False)
+        self.listener.resetStatus()
         with self.connection:
             try:
                 self.client.send_setvol(0)
@@ -381,3 +387,12 @@ class MpdClient(object):
     def setCoordinatorNotification(self, enabled):
         self.logger.info("setCoordinatorNotification called with enabled=%s" % enabled)
         self.listener.setNotifyCoordinator(enabled)
+        
+    def waitForStatus(self, status : eStates, timeout=10.0):
+        if status is eStates.STOPPED:
+            state = "ended"
+        elif status is eStates.PLAYED:
+            state = "started"
+        elif status is eStates.FAILED:
+            state = "error"
+        return self.listener.waitForStatus(state, timeout)

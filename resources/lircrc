@@ -90,4 +90,9 @@ begin
   prog = RaspberryRadio
   config = mute
 end
+begin
+  button = KEY_VCR
+  prog = RaspberryRadio
+  config = vcr
+end
 

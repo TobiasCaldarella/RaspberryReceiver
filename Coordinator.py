@@ -4,7 +4,7 @@ Created on 08.08.2019
 @author: tobias
 '''
 from GpioController import PowerState
-from MpdClient import MpdClient
+import MpdClient
 #from IR import IR
 import threading
 from enum import Enum
@@ -15,6 +15,179 @@ from time import sleep
 from Configuration import _RadioState, _RadioPowerState
 import queue
 from MotorPoti import MotorPoti
+
+from enum import Enum
+from builtins import True
+class eStates(Enum):
+    ERROR = 0
+    POWERED_OFF = 1
+    STOPPED = 2
+    RADIO_PLAYING = 3
+    BLUETOOTH_PLAYING = 4
+    DLNA_PLAYING = 5
+    MUTED = 6
+    SPEAKING = 7
+
+class State(object):
+    def __init__(self, logger, coordinator, eState: eStates, transitionsFrom): # transitions: {eStates.ERROR: gotoErrorState, eStates.POWERED_OFF: gotoPoweredOff}
+        self.properties = {}
+        self.eState = eState
+        self.transistionsFrom = transitionsFrom # new eState/state type -> transition function
+        self.logger = coordinator.logger
+        self.coordinator = coordinator
+        self.mpdClient = coordinator.mpdClient
+        self.gpioController = coordinator.gpioController
+        
+    def getEstate(self):
+        return self.eState
+    
+    def transitIntoFrom(self, oldState):
+        if not oldState.getEstate() in self.transitionsFrom:
+            self.logger.error("Coordinator: No transition from state '%s' to '%s'" % (oldState.getEstate, self.eState))
+        self.logger.info("Coordinator: Transition '%s' => '%s'" % (oldState.getEstate, self.eState))
+        try:
+            if self.transistionsFrom[oldState.getEstate()]() is True: # call registered transition function
+                self.logger.info("Coordinator: Transition successful")
+                return True
+            else:
+                self.logger.error("Coordinator: Transition failed with bad return value")
+        except:
+            self.logger.error("Coordinator: Transition failed with exception")
+        return False
+    
+class StateError(State):
+    def __init__(self, coordinator, errorInfo):
+        self.errorInfo = errorInfo
+        transitionsFrom = {
+            eStates.POWERED_OFF: self.fromPoweredOff,
+            eStates.STOPPED: self.fromStopped
+        }
+        State.__init__(self, coordinator, eStates.ERROR, transitionsFrom)
+        
+    def printError(self):
+        self.logger.error("StateError: " + self.errorInfo)
+        
+    def fromPoweredOff(self):
+        return True
+    
+    def fromStopped(self):
+        return True
+    
+class StatePoweredOff(State):
+    def __init__(self, coordinator):
+        transitionsFrom = {
+            eStates.STOPPED: self.fromStopped
+        }
+        State.__init__(self, coordinator, eStates.ERROR, transitionsFrom)
+        
+    def fromStopped(self):
+        if self.coordinator.sleepTimer:
+            self.coordinator.sleepTimer.cancel()
+        self.coordinator.bluetooth.disable(wait_for_stop = False)
+        if self.coordinator.wheel:
+            self.coordinator.wheel.disable()
+        if self.coordinator.volumeKnob:
+            self.coordinator.volumeKnob.disable()
+        if self.coordinator.dlnaRenderer:
+            self.coordinator.dlnaRenderer.stop()
+        self.mpdClient.stopQueueHandler()
+        self.mpdClient.setCoordinatorNotification(False)
+        self.logger.info("Powering down amp...")
+        self.gpioController.setStereolight(PowerState.OFF)
+        self.gpioController.setBacklight(PowerState.OFF)
+        self.gpioController.setNeedlelight(PowerState.OFF)
+        self.gpioController.setPowerAndSpeaker(PowerState.OFF) # speakers disconnected, amp powered down. But there is still enough power in the capacitors for the volume control board to work and gracefully shut down
+        self.coordinator.vcb.powerOff()
+        self.gpioController.setStereoBlink(active=True, pause_s=10)
+        self.coordinator.signal_strength_meter.disable()
+        self.coordinator.setBrightness(self.coordinator.config.backlight_default_brightness)
+        self.coordinator.sendStateToMqtt()
+        return True
+    
+class StateStopped(State):
+    def __init__(self, coordinator):
+        transitionsFrom = {
+            eStates.POWERED_OFF: self.fromPoweredOff,
+            eStates.STOPPED: self.fromStopped,
+            eStates.RADIO_PLAYING: self.fromRadioPlaying
+        }
+        State.__init__(self, coordinator, eStates.STOPPED, transitionsFrom)
+    
+    def fromStopped(self):
+        self.logger.info("Already stopped, not doing anything")
+    
+    def fromPoweredOff(self):
+        if self.coordinator.sleepTimer:
+            self.coordinator.sleepTimer.cancel()
+        self.logger.info("Powering up amp...")
+        self.coordinator.signal_strength_meter.enable()
+        self.coordinator.setBrightness(self.coordinator.config.backlight_default_brightness)
+        self.gpioController.setBacklight(PowerState.ON)
+        self.gpioController.setStereolight(PowerState.OFF)
+        self.gpioController.setNeedlelight(PowerState.ON)
+        self.gpioController.setPowerAndSpeaker(PowerState.ON) #async, returns before speakers are connected but after amp has power
+        self.coordinator.loudness = self.gpioController.getLoudnessEnabled()
+        self.coordinator.bluetoothEnabled = self.gpioController.getBluetoothEnabled()
+        self.coordinator.vcb.setLoudness(self.coordinator.loudness)
+        self.coordinator.vcb.setVolume(self.coordinator.currentVolume)
+        self.coordinator.vcb.powerOn()
+        self.mpdClient.startQueueHandler()
+        self.mpdClient.setVolume(100) # set this before accepting any feedback from mpd
+        self.coordinator.needle.setNeedleForChannel(ch=self.coordinator.currentChannel, relative=False, drivingThread=True, mtx=self.coordinator.playStateCnd)
+        if self.coordinator.bluetoothEnabled:
+            self.coordinator.bluetooth.enable()
+        if self.coordinator.wheel:
+            self.coordinator.wheel.enable()
+        if self.coordinator.volumeKnob:
+            self.coordinator.volumeKnob.enable()
+                
+        self.mpdClient.setCoordinatorNotification(True) # now we are ready to receive status updates
+        self.mpdClient.setVolume(100) # and this just triggers an update of the mpd state so we can get a current status now
+        self.coordinator._setSkipMqttUpdates(False)
+        return True
+    
+    def fromRadioPlaying(self):
+        self.mpdClient.stop()
+        self.gpioController.setStereolight(PowerState.OFF)
+        return self.mpdClient.waitForStatus(MpdClient.eStates.STOPPED)
+    
+class StateRadioPlaying(State):
+    def __init__(self, coordinator, channel, announceChannel):
+        transitionsFrom = {
+            eStates.STOPPED: self.fromStopped
+        }
+        State.__init__(self, coordinator, eStates.STOPPED, transitionsFrom)
+        self.channel = channel
+        self.announceChannel = announceChannel
+        
+    def fromStopped(self):
+        # needle position already set by caller, we just start playing right away
+        mpdVolume = 100
+        self.gpioController.setStereoBlink(True)
+        self.mpdClient.setVolume(mpdVolume)
+        # todo: load correct playlist!
+        if self.mpdClient.loadRadioPlaylist():
+            channels = self.mpdClient.getTitlesFromPlaylist()
+            numChannels = len(self.channels) # what to do if number of channels changed?
+            if numChannels is not self.coordinator.numChannels:
+                self.logger.warn("Number of channels changed, have to re-init needle!")
+        
+        self.mpdClient.playTitle(playlistPosition=self.channel)
+        if self.announceChannel:
+            channelName = channels[self.channel]
+            lang='de-de'
+            if channelName.find('|lang=') >= 0:
+                channelName = channelName.split('|lang=')
+                lang = channelName[1]
+                channelName = channelName[0]
+            # speaking doesn't work yet, state not implemented
+            #self.announceTimer = threading.Timer(self.config.announceTime_s, lambda: self.speak(text=channelName,lang=lang, block=True))
+            #self.announceTimer.start()
+        # wait for playback to start
+        if self.mpdClient.waitForStatus(MpdClient.eStates.PLAYED) is True:# this can fail if channel invalid, connection bad or whatever
+            self.gpioController.setStereolight(PowerState.ON)
+            return True
+        return False
 
 class Coordinator(object):
     '''
@@ -54,6 +227,10 @@ class Coordinator(object):
         self.skipMqttUpdates = False
         self.job_queue = queue.Queue(30)
         self.announceTimer = None
+        self.dlnaRenderer = None
+    
+        self.currentState = None
+        
         
     def do_work(self):
         self.logger.debug("Worker thread started")
@@ -97,80 +274,52 @@ class Coordinator(object):
         
     def _powerOff(self):
         self.logger.info("Power down sequence started")
-        with self.playStateCnd:
-            if not self.isPoweredOn():
-                self.logger.debug("Not powered up, ignoring request")
-                return
-            self.powerState = _RadioPowerState.POWERING_DOWN
-            if self.sleepTimer:
-                self.sleepTimer.cancel()
-            self.bluetooth.disable(wait_for_stop = False)
-            if self.wheel:
-                self.wheel.disable()
-            if self.volumeKnob:
-                self.volumeKnob.disable()
-                
-            self._radioStop()
-            self.mpdClient.stopQueueHandler()
-            self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd) # bluetooth and radio are stopped, wait for play state to become stopped
-            self.mpdClient.setCoordinatorNotification(False)
-            self.logger.info("Powering down amp...")
-            self.gpioController.setStereolight(PowerState.OFF)
-            self.gpioController.setBacklight(PowerState.OFF)
-            self.gpioController.setNeedlelight(PowerState.OFF)
-            self.gpioController.setPowerAndSpeaker(PowerState.OFF) # speakers disconnected, amp powered down. But there is still enough power in the capacitors for the volume control board to work and gracefully shut down
-            self.vcb.powerOff()
-            self.gpioController.setStereoBlink(active=True, pause_s=10)
-            self.signal_strength_meter.disable()
-            self.setBrightness(self.config.backlight_default_brightness)
-            self.powerState = _RadioPowerState.POWERED_DOWN
-        self.sendStateToMqtt()
+        if self.currentState.getEstate() is eStates.POWERED_OFF:
+            self.logger.info("Already powered off, not doing anything")
+            return
+
+        newState = StateStopped(self)
+        if not newState.transitIntoFrom(self.currentState):
+            self.currentState = StateError(self, "Failed to stop")
+            return False
+        self.currentState = newState
+        
+        newState = StatePoweredOff(self)
+        if not newState.transitIntoFrom(self.currentState):
+            self.currentState = StateError(self, "Failed to power off")
+            return False
+        self.currentState = newState
+        self.logger.info("Powered down")
     
     def powerOn(self):
-        self.logger.info("Power on requested...")
-        if self.isPoweredOn():
-            self.logger.info("Already powered on, not doing anything")
-            return            
+        self.logger.info("Power on requested...")                
         self._putJobIntoQueue(self._powerOn)
     
     def _powerOn(self):
         self.logger.info("Power up sequence started...")
-        with self.playStateCnd:
-            if self.sleepTimer:
-                self.sleepTimer.cancel()
-            if self.powerState is not _RadioPowerState.POWERED_DOWN:
-                self.logger.info("Not powered down, ignoring request")
-            else:
-                self.logger.info("Powering up amp...")
-                self.powerState = _RadioPowerState.POWERING_UP
-                self.signal_strength_meter.enable()
-                self.setBrightness(self.config.backlight_default_brightness)
-                self.gpioController.setBacklight(PowerState.ON)
-                self.gpioController.setStereolight(PowerState.OFF)
-                self.gpioController.setPowerAndSpeaker(PowerState.ON) #async, returns before speakers are connected but after amp has power
-                self.loudness = self.gpioController.getLoudnessEnabled()
-                self.bluetoothEnabled = self.gpioController.getBluetoothEnabled()
-                self.vcb.setLoudness(self.loudness)
-                self.vcb.setVolume(self.currentVolume)
-                self.vcb.powerOn()
-                self.mpdClient.startQueueHandler()
-                self._radioStop()
-                self.radioState = _RadioState.STOPPED
-                self.mpdClient.setVolume(self.currentVolume) # set this before accepting any feedback from mpd
-                self.needle.setNeedleForChannel(ch=self.currentChannel, relative=False, drivingThread=True, mtx=self.playStateCnd)
-                self.powerState = _RadioPowerState.POWERED_UP
-                self.radioPlay(announceChannel=False) # put this into queue 
-                if self.bluetoothEnabled:
-                    self.bluetooth.enable()
-                if self.wheel:
-                    self.wheel.enable()
-                if self.volumeKnob:
-                    self.volumeKnob.enable()
-                    
-        self.mpdClient.setCoordinatorNotification(True) # now we are ready to receive status updates
-        self.mpdClient.setVolume(self.currentVolume) # and this just triggers an update of the mpd state so we can get a current status now
-        self._setSkipMqttUpdates(False) 
+        if self.currentState.getEstate() is not eStates.POWERED_OFF:
+            self.logger.info("Already powered on, not doing anything")
+            return
             
+        newState = StateStopped(self)
+        if newState.transitIntoFrom(self.currentState):
+            self.logger.info("Powered up")
+            self.currentState = newState
+            return True
+        else:
+            self.logger.info("Power up failed")
+            self.currentState = StateError(self, "Power up failed")
+            return False
+        
+        newState = StateRadioPlaying(self, self.currentChannel, False)
+        if newState.transitIntoFrom(self.currentState):
+            self.logger.info("Radio playing")
+            self.currentState = newState
+            return True
+        else:
+            self.logger.info("Radio playback failed")
+            return False
+        
     def sleep(self, time_m):
         self.logger.info("Sleep requested...")
         self._putJobIntoQueue(lambda: self._sleep(time_m))
@@ -242,6 +391,8 @@ class Coordinator(object):
         self.workerThread.start()
         self.sendStateToMqtt()
         
+        self.currentState = StatePoweredOff(self)
+        
     def downloadPlaylist(self):
         for i in range(1,10):
             try:
@@ -286,6 +437,9 @@ class Coordinator(object):
         with self.playStateCnd:
             if self.radioState == _RadioState.BLUETOOTH:
                 self.logger.debug("Bluetooth active, not changing channel")
+                return
+            if self.radioState == _RadioState.DLNA:
+                self.logger.debug("DLNA active, not changing channel")
                 return
                 
             if not self.isPoweredOn() and not setIfPowerOff:
@@ -421,6 +575,9 @@ class Coordinator(object):
         if self.radioState is _RadioState.BLUETOOTH:
             self.logger.info("Not playing, bluetooth is active!")
             return
+        if self.radioState is _RadioState.DLNA:
+            self.logger.info("Not playing, dlna is active!")
+            return
         if not self.isPoweredOn():
             self.logger.error("Will not start play, not in powered up state")
             return
@@ -498,9 +655,13 @@ class Coordinator(object):
                 self.gpioController.setStereolight(PowerState.ON)
                 self.gpioController.setNeedlelight(PowerState.ON)
             elif (state == _RadioState.STOPPED):
-                self.gpioController.setStereolight(PowerState.OFF)  
+                self.gpioController.setStereolight(PowerState.OFF)
             elif (state == _RadioState.BLUETOOTH):
                 self.gpioController.setStereoBlink(active=True, pause_s=1)
+                self.gpioController.setNeedlelight(PowerState.OFF)
+            elif (state == _RadioState.DLNA):
+                self.gpioController.setNeedleLightBlink(active=True, pause_s=1)
+                self.gpioController.setStereolight(PowerState.OFF)
         
     # mutes or unmutes radio (and maybe other sources like bluetooth in future?)    
     def mute(self, mute):
@@ -534,7 +695,7 @@ class Coordinator(object):
             #if volume is not None:
                 #self.currentVolume = volume
             
-            if self.radioState is not _RadioState.BLUETOOTH:
+            if self.radioState is not _RadioState.BLUETOOTH and self.radioState is not _RadioState.DLNA:
                 if mpdPlaying is True:
                     self._setRadioState(_RadioState.PLAYING)
                 elif mpdPlaying is False:
@@ -584,6 +745,52 @@ class Coordinator(object):
             self.gpioController.setStereolight(intensity = brightness)
         self.sendStateToMqtt()
         
+    def toggleDlna(self):
+        if (self.radioState is _RadioState.DLNA):
+            self.stopDlna()
+        else: 
+            self.playDlna()
+                
+    def playDlna(self):
+        self._putJobIntoQueue(self._playDlna)
+    
+    def stopDlna(self):
+        self._putJobIntoQueue(self._stopDlna)
+    
+    def _playDlna(self):
+        with self.playStateCnd:
+            if self.radioState is not _RadioState.PLAYING and self.radioState is not _RadioState.STOPPED:
+                self.logger.error("Cannot play dlna if radio state is not playing nor stopped")
+                return
+            elif not self.isPoweredOn():
+                self.logger.error("Cannot play dlna if not powered up!")
+                return
+            else:
+                self._radioStop()
+                self.gpioController.setBacklight(PowerState.OFF)
+                self.gpioController.setBacklight(PowerState.ON)
+                self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
+                self._speak("DLNA aktiviert", "de-de")
+                self.dlnaRenderer.start()
+                self._setRadioState(_RadioState.DLNA) # dlna state won't be overwritten by status updates
+            self.playStateCnd.notify_all()
+    
+    def _stopDlna(self, speak = True):
+        with self.playStateCnd:
+            if self.radioState is _RadioState.DLNA:
+                self.gpioController.setBacklight(PowerState.OFF)
+                self.gpioController.setBacklight(PowerState.ON)
+                self.dlnaRenderer.stop()
+                if speak is True:
+                    self._speak("DLNA deaktiviert", "de-de")
+                self._setRadioState(_RadioState.STOPPED)
+                self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
+                self._radioPlay()
+            else:
+                self.logger.info("not in state dlna, cannot stop dlna")
+                return
+            self.playStateCnd.notify_all()        
+            
     def bluetoothControl(self, enabled):
         self._putJobIntoQueue(lambda: self._bluetoothControl(enabled))
         

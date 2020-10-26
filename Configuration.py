@@ -9,6 +9,7 @@ class _RadioState(Enum):
     STOPPED = 0
     PLAYING = 1
     BLUETOOTH = 2
+    DLNA = 3
     
 class _RadioPowerState(Enum):
     POWERED_DOWN = 0

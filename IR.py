@@ -180,6 +180,9 @@ class IR(object):
                         self.two_digit_timeout = threading.Timer(10.0, self.do_two_digit_timeout)
                         self.two_digit_timeout.start()
                         continue
+                elif "vcr" in code:
+                    self.logger.info("LIRC: 'vcr'")
+                    self.coordinator.toggleDlna()
                 else:
                     self.logger.warn("Received unknown command from LIRC: '%s'" % code)
                     continue
