@@ -13,6 +13,7 @@ import queue
 from time import sleep
 from Configuration import _RadioState
 from enum import Enum
+from GpioController import PowerState
 
 class _Connection:
     def __init__(self, parent):
@@ -123,6 +124,7 @@ class MpdClientEventListener(object):
                 else:
                     self.logger.error("Not restarting, playback failed, already restarted @%i" % alreadyRestarted)
                     self.status['error'] = True
+                    self.coordinator.gotoErrorState("Not restarting, playback failed, already restarted @%i" % alreadyRestarted)
                 
             if self.coordinator:
                 currentSongId = None
@@ -136,8 +138,16 @@ class MpdClientEventListener(object):
             with self.statusCnd:
                 if playing:
                     self.status['started'] = True
+                    #self.coordinator.gotoMpdPlayingState()
+                    self.coordinator.gpioController.setStereolight(PowerState.ON)
                 elif self.status['started']:
                     self.status['ended'] = True
+                    self.coordinator.gpioController.setStereolight(PowerState.OFF)
+                    #self.coordinator.gotoMpdStoppedState()
+                    # TODO: Hier muss jetzt irgendwie der Coordinator Status auf Stopped gesetzt werden. 
+                    #       Es muss aber auch unterschieden werden, ob der MPD das entschieden hat oder ob der Coordinator 
+                    #       den Stop ausgelöst hat
+                    #    Zumindest das StereoLight sollte hier ausgeschaltet werden. Status Übergang ist evtl. nicht gut!
                 self.statusCnd.notify_all()
 
             try:

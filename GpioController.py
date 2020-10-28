@@ -203,6 +203,13 @@ class GpioController(object):
             return
         self.backLight.set(state, intensity)
         
+    def setBacklightBlink(self, active=False, pause_s = 0, intensity = None):
+        self.logger.debug("Backlight blink set to %s, pause %i" %(active, pause_s))
+        if active:
+            self.backLight.blink(pause_s*1000, intensity)
+        else:
+            self.backLight.set(PowerState.OFF, intensity)
+        
     def setStereolight(self, state = None, blinking = False, intensity = None):
         if self.stereoLight is None:
             return
