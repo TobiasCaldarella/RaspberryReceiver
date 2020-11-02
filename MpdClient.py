@@ -236,10 +236,11 @@ class MpdClient(object):
         with self.connection:
             try:
                 pl = self.client.playlistinfo()
+                self.logger.info(pl)
                 titles = [i['name'] for i in pl]
                 return titles
-            except:
-                self.logger.error("Caught exception in MpdClient.playlistinfo(): '%s'" % (sys.exc_info()[0]))
+            except Exception as x:
+                self.logger.error("Caught exception in MpdClient.playlistinfo(): '%s'" % x)
                 return []
     
     def load(self, url):

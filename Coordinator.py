@@ -296,7 +296,8 @@ class StateRadioActive(State):
 class StateMuted(State):
     def __init__(self, coordinator):
         transitionsFrom = {
-            eStates.RADIO_ACTIVE: self.fromRadioActive
+            eStates.RADIO_ACTIVE: self.fromRadioActive,
+            eStates.SPEAKING: self.fromSpeaking
         }
         State.__init__(self, coordinator, eStates.MPD_MUTED, transitionsFrom)
         
@@ -304,17 +305,20 @@ class StateMuted(State):
         self.mpdClient.mute(True)
         return True
     
+    def fromSpeaking(self):
+        return True
+    
 class StateSpeaking(State):
     def __init__(self, coordinator, text, language):
         transitionsFrom = {
             eStates.MPD_MUTED: self.fromMpdMuted
         }
-        State.__init__(self, coordinator, eStates.MPD_MUTED, transitionsFrom)
+        State.__init__(self, coordinator, eStates.SPEAKING, transitionsFrom)
         self.text = text
         self.language = language
         
     def fromMpdMuted(self):
-        self.textToSpeech.speak(self.text, self.language) # wir sollten nicht im übergang sprechen (und blockieren!)
+        self.coordinator.textToSpeech.speak(self.text, self.language) # wir sollten nicht im übergang sprechen (und blockieren!)
         # sprechen methode muss asynchron werden
         # und abbrechbar beim übergang in andere stati
         return True
@@ -435,7 +439,25 @@ class Coordinator(object):
             self.currentState = StateError(self, "Failed to go to radio active state")
             return False
         return True
-
+    
+    def _gotoMutedState(self):
+        newState = StateMuted(self)
+        if newState.transitIntoFrom(self.currentState):
+            self.currentState = newState
+        else:
+            self.currentState = StateError(self, "Failed to go to muted state")
+            return False
+        return True
+            
+    def _gotoSpeakingState(self, text, language):
+        newState = StateSpeaking(self, text, language)
+        if newState.transitIntoFrom(self.currentState):
+            self.currentState = newState
+        else:
+            self.currentState = StateError(self, "Failed to go to speaking state")
+            return False
+        return True
+            
     def powerOff(self):
         self.logger.info("Power down requested...")
         if self.announceTimer:
@@ -474,7 +496,7 @@ class Coordinator(object):
         
         if self._gotoRadioActiveState() is False:
             return False
-        return True
+        return True    
         
     def sleep(self, time_m):
         self.logger.info("Sleep requested...")
@@ -590,29 +612,16 @@ class Coordinator(object):
         self._gotoStoppedState()
         self.currentChannel = self.needle.setNeedleForChannel(ch=channel, relative=relative, drivingThread=True, mtx=None)
         self._gotoRadioActiveState()
-        return 
-            
-        with self.playStateCnd:
-            if self.radioState == _RadioState.BLUETOOTH:
-                self.logger.debug("Bluetooth active, not changing channel")
-                return
-            if self.radioState == _RadioState.DLNA:
-                self.logger.debug("DLNA active, not changing channel")
-                return
-                
-            if not self.isPoweredOn() and not setIfPowerOff:
-                self.logger.info("not powered on, not setting channel")
-                return
-            self.logger.info("setting channel to %i, relative %s" % (channel, relative))
-            self.__radioStop(needleLightOff=False)
-            self.waitForRadioState(_RadioState.STOPPED, self.playStateCnd)
-            # the needle periodically unlocks the mtx to allow other threads to do stuff
-            # get new current channel from needle since it collected all the updates 
-            # that occured in the meantime
-            self.currentChannel = self.needle.setNeedleForChannel(ch=channel, relative=relative, drivingThread=True, mtx=self.playStateCnd)
-            if self.isPoweredOn():
-                self.gpioController.setNeedlelight(PowerState.ON)
-                self.__radioPlay(announceChannel=True)
+        
+        # announce channel
+        channels = self.mpdClient.getTitlesFromPlaylist()
+        channelName = channels[self.currentChannel]
+        lang='de-de'
+        if channelName.find('|lang=') >= 0:
+            channelName = channelName.split('|lang=')
+            lang = channelName[1]
+            channelName = channelName[0]
+        self._speak(channelName, lang)
     
     def volumeUp(self):
         self.logger.info("volumeUp requested")
@@ -760,17 +769,19 @@ class Coordinator(object):
     
     def speak(self, text, lang, block=False):
         self.logger.debug("Speak '%s', lang '%s'" % (text, lang))
-        if block is True:
-            self._speak(text, lang)
-        else:
-            self._putJobIntoQueue(lambda: self._speak(text, lang))
+        self._putJobIntoQueue(lambda: self._speak(text, lang))
             
     def _speak(self, text, lang):
-        if not self.isPoweredOn():
-            self.logger.info("Cannot speak if not powered on. Should have said: '%s'" % text)
-            return
-        self.textToSpeech.speak(text, lang)
-    
+        prevState = self.currentState
+        self._gotoMutedState()
+        self._gotoSpeakingState(text, lang)
+        #self.textToSpeech.speak(text, lang)
+        self._gotoMutedState()
+        if prevState.transitIntoFrom(self.currentState):
+            self.currentState = prevState
+        else:
+            self.currentState = StateError(self, "Failed to go back to previous state")
+
     #todo: make this async
     def playSingleFile(self, file):
         self.logger.debug("playSingleFile('%s')" % file)
