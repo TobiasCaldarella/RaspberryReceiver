@@ -164,6 +164,8 @@ class MpdClientEventListener(object):
         
     def waitForStatus(self, status, timeout):
         self.logger.debug("Waiting for status '%s'..." % status)
+        if status == 'ended' and self.status['started'] is False:
+            return True # workaround gegen hängen
         if self.status[status] is False:
             with self.statusCnd:
                 while self.status[status] is False:
@@ -377,20 +379,26 @@ class MpdClient(object):
                 return False
             
     # this one is not async. not sure if it's a good idea...
-    def mute(self, muted):
+    def mute(self, muted, immediately = False):
         try:
             self.logger.info("Muting/Unmuting mpd. mute: %s" % muted)
             with self.connection:
                 if muted == True:
                     if self.config.mpd_change_volume is False:
-                        for vol in range(self.mpdVolume-20,-1,-10):
-                            self.client.send_setvol(vol)
-                            time.sleep(0.1)
+                        if immediately is False:
+                            for vol in range(self.mpdVolume-20,-1,-10):
+                                self.client.send_setvol(vol)
+                                time.sleep(0.1)
+                        else:
+                            self.client.send_setvol(0)
                 else:
                     if self.config.mpd_change_volume is False:
-                        for vol in range(20,self.mpdVolume+1,10):
-                            self.client.send_setvol(vol)
-                            time.sleep(0.1)
+                        if immediately is False:
+                            for vol in range(20,self.mpdVolume+1,10):
+                                self.client.send_setvol(vol)
+                                time.sleep(0.1)
+                        else:
+                            self.client.send_setvol(self.mpdVolume)
         except:
             self.logger.error("Caught exception in MpdClient.mute(): '%s'" % (sys.exc_info()[0]))
             return False

@@ -18,7 +18,7 @@ from MotorPoti import MotorPoti
 
 from enum import Enum
 import sys
-from threading import Event
+from threading import Event, Lock
 from _queue import Empty
 class eStates(Enum):
     ERROR = 0
@@ -228,7 +228,9 @@ class StateStopped(State):
         return self.mpdClient.waitForStatus(MpdClient.eStates.STOPPED)
     
     def fromMpdMuted(self):
-        self.mpdClient.mute(False)
+        self.mpdClient.stop()
+        return self.mpdClient.waitForStatus(MpdClient.eStates.STOPPED)
+        self.mpdClient.mute(False, True)
         return True
     
 class StateRadioActive(State):
@@ -343,6 +345,7 @@ class Coordinator(object):
         self.workerThreadInterrupt = Event()
         self.skipMqttUpdates = False
         self.job_queue = queue.Queue(30)
+        self.job_queue_mtx = Lock()
         self.announceTimer = None
         self.dlnaRenderer = None
     
@@ -364,28 +367,24 @@ class Coordinator(object):
                 self.logger.debug("Worker thread ended")
                 return
                 
-    def __endWorkerThread(self, clearQueue=False):
-        if clearQueue:
-            self.__clearJobQueue()
-        self.logger.info("stopping worker thread...")
-        self._putJobIntoQueue(None)
-        self.job_queue.join()
-        self.logger.info("worker thread joined")
-        self.textToSpeech.interrupt_clear()
-        self.needle.interrupt_clear()
-            
     ''' clears all pending jobs and interrupts long-running jobs (for now only speech & needle) '''
     def __clearJobQueue(self):
         self.logger.info("Clearing job queue")
-        while not self.job_queue.empty():
-            self.job_queue.get(block=False)
-            self.job_queue.task_done()
-        self.textToSpeech.interrupt_set()
-        self.needle.interrupt_set()
+        with self.job_queue_mtx:
+            while not self.job_queue.empty(): # todo protect this against someone else putting stuff in here
+                self.job_queue.get(block=False)
+                self.job_queue.task_done()
+            self.textToSpeech.interrupt_set()
+            self.needle.interrupt_set()
+            self.job_queue.join()
+            self.logger.info("job queue empty")
+            self.textToSpeech.interrupt_clear()
+            self.needle.interrupt_clear()
 
     def _putJobIntoQueue(self, job):
         try:
-            self.job_queue.put(job, True, 2)
+            with self.job_queue_mtx:
+                self.job_queue.put(job, True, 2)
         except:
             self.logger.error("Could not put job into queue, queue full?")
                 
@@ -467,6 +466,7 @@ class Coordinator(object):
         self.logger.info("Power down requested...")
         if self.announceTimer:
             self.announceTimer.cancel()
+        self.__clearJobQueue()
         self._putJobIntoQueue(self._powerOff)
         
     def _powerOff(self):
@@ -609,6 +609,7 @@ class Coordinator(object):
         self.logger.info("channel change requested (channel=%i, relative = %s)" % (channel, relative))
         # wenn sich needle bereits bewegt, bewegung updaten
         if self.needle.updateIfNeedleMoving(ch=channel, relative=relative) is False:
+            self.__clearJobQueue() # interrupt anything else
             self._putJobIntoQueue(lambda: self._setChannel(channel, relative))
         return
         
@@ -783,8 +784,12 @@ class Coordinator(object):
         self._gotoMutedState()
         self._gotoSpeakingState()
         # this one here will block the queue, so make it interruptable
-        self.textToSpeech.speak(text, lang) # das hier muss irgendwie interruptable werden
+        wasInterrupted = False
+        if self.textToSpeech.speak(text, lang) is False:
+            wasInterrupted = True
         self._gotoMutedState()
+        if wasInterrupted:
+            return
         if prevState.transitIntoFrom(self.currentState):
             self.currentState = prevState
         else:

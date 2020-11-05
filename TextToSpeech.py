@@ -56,14 +56,18 @@ class TextToSpeech(object):
     def speak(self, text, lang):
         if self.interrupted:
             self.logger.info("Speak: Not speaking, already interrupted")
-            return
+            return False
         self.logger.info("Speak: '%s'" % text)
         textEncoded = urllib.parse.quote(text, safe='')
         
         cacheUrl = self._get_from_cache(textEncoded, lang)
         
-        if cacheUrl is not None and self.interrupted is False:
+        if self.interrupted is True:
+            return False
+        if cacheUrl is not None:
             self._playOgg(cacheUrl)
+        self.logger.info("Speak: done")
+        return not self.interrupted
         
     def _get_from_cache(self, filename, lang):
         try:

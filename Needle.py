@@ -55,7 +55,6 @@ class Needle(object):
             if self.isMoving is False:
                 return
             self.logger.info("Needle: interrupting")
-            self.desiredChannel = None
             self.desiredPosition = None
             
     def interrupt_clear(self):
@@ -106,9 +105,11 @@ class Needle(object):
             self.logger.debug("needle requested at channel %i. Current: %i target: %i" % (ch, self.currentPosition, self.desiredPosition))
             self.logger.debug("we are driving thread, start moving")
             while (self.currentPosition != self.desiredPosition and self.desiredPosition is not None):
-                self.mtx.release()
-                self._adjustNeedle()
-                self.mtx.acquire()
+                try:
+                    self.mtx.release()
+                    self._adjustNeedle()
+                finally:
+                    self.mtx.acquire()
                     
             self.isMoving = False
             self.logger.debug("needle in desired position, exiting")
