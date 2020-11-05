@@ -18,6 +18,8 @@ from MotorPoti import MotorPoti
 
 from enum import Enum
 import sys
+from threading import Event
+from _queue import Empty
 class eStates(Enum):
     ERROR = 0
     POWERED_OFF = 1
@@ -309,16 +311,14 @@ class StateMuted(State):
         return True
     
 class StateSpeaking(State):
-    def __init__(self, coordinator, text, language):
+    def __init__(self, coordinator):
         transitionsFrom = {
             eStates.MPD_MUTED: self.fromMpdMuted
         }
         State.__init__(self, coordinator, eStates.SPEAKING, transitionsFrom)
-        self.text = text
-        self.language = language
         
     def fromMpdMuted(self):
-        self.coordinator.textToSpeech.speak(self.text, self.language) # wir sollten nicht im übergang sprechen (und blockieren!)
+        #self.coordinator.textToSpeech.speak(self.text, self.language) # wir sollten nicht im übergang sprechen (und blockieren!)
         # sprechen methode muss asynchron werden
         # und abbrechbar beim übergang in andere stati
         return True
@@ -356,8 +356,8 @@ class Coordinator(object):
         self.playStateCnd = threading.Condition()
         self.currentSongInfo = {}
         self.textToSpeech = None
-        self.workerThread = threading.Thread(target=self.do_work, name="Coordinator.WorkerThread")
-        self.running = False
+        self.workerThread = threading.Thread(target=self.__do_work, name="Coordinator.WorkerThread")
+        self.workerThreadInterrupt = Event()
         self.skipMqttUpdates = False
         self.job_queue = queue.Queue(30)
         self.announceTimer = None
@@ -365,19 +365,41 @@ class Coordinator(object):
     
         self.currentState = None
         
-        
-    def do_work(self):
+    def __do_work(self):
         self.logger.debug("Worker thread started")
-        while self.running:
-            try:
-                self.logger.debug("Worker thread waiting for jobs in queue")
-                job = self.job_queue.get(block=True)
-                if job is not None:
-                    self.logger.debug("Running job: '%s'" % job)
+        while True:
+            self.logger.debug("Waiting for item in queue")
+            job = self.job_queue.get(block=True)
+            if job is not None:
+                self.logger.info("Running job: '%s'" % job)
+                try:
                     job()
-            except Exception as ex:
-                self.logger.error("Exception in worker thread: '%s'" % ex)
-        self.logger.debug("Worker thread stopped") 
+                except Exception as ex:
+                    self.logger.error("Exception in worker thread: '%s'" % ex)
+            self.job_queue.task_done()
+            if job is None:
+                self.logger.debug("Worker thread ended")
+                return
+                
+    def __endWorkerThread(self, clearQueue=False):
+        if clearQueue:
+            self.__clearJobQueue()
+        self.logger.info("stopping worker thread...")
+        self._putJobIntoQueue(None)
+        self.job_queue.join()
+        self.logger.info("worker thread joined")
+            
+    def __clearJobQueue(self):
+        self.logger.info("Clearing job queue")
+        while not self.job_queue.empty():
+            self.job_queue.get(block=False)
+
+    def _putJobIntoQueue(self, job):
+        try:
+            self.job_queue.put(job, True, 2)
+        except:
+            self.logger.error("Could not put job into queue, queue full?")
+                
     
     def connectWifi(self):
         self.gpioController.setStereoBlink(active=True, pause_s=2)
@@ -393,13 +415,7 @@ class Coordinator(object):
         self.logger.warn("Connection to mqtt failed, will retry immediately")
         self.mqttClient.reconnect()
         return True
-
-    def _putJobIntoQueue(self, job):
-        try:
-            self.job_queue.put(job, True, 2)
-        except:
-            self.logger.error("Could not put job into queue, queue full?")
-                        
+        
     def gotoErrorState(self, errorDescription):
         self.logger.info("Goto error state requested, flushing coordinator queue...")
         # TODO: 
@@ -449,8 +465,8 @@ class Coordinator(object):
             return False
         return True
             
-    def _gotoSpeakingState(self, text, language):
-        newState = StateSpeaking(self, text, language)
+    def _gotoSpeakingState(self):
+        newState = StateSpeaking(self)
         if newState.transitIntoFrom(self.currentState):
             self.currentState = newState
         else:
@@ -512,7 +528,7 @@ class Coordinator(object):
             
             if time_m > 0:
                 self.logger.info("Sleep set to %i minutes" % time_m)
-                self.textToSpeech.speak(text=("Schalte in %i Minuten aus." % time_m), lang='de-de')
+                self.speak(text=("Schalte in %i Minuten aus." % time_m), lang='de-de')
                 self.sleepTimer = threading.Timer(time_m * 60, self.powerOff)
                 self.sleepTimer.start()
                 self.setBrightness(self.config.backlight_sleep_brightness)
@@ -774,8 +790,9 @@ class Coordinator(object):
     def _speak(self, text, lang):
         prevState = self.currentState
         self._gotoMutedState()
-        self._gotoSpeakingState(text, lang)
-        #self.textToSpeech.speak(text, lang)
+        self._gotoSpeakingState()
+        # this one here will block the queue, so make it interruptable
+        self.textToSpeech.speak(text, lang) # das hier muss irgendwie interruptable werden
         self._gotoMutedState()
         if prevState.transitIntoFrom(self.currentState):
             self.currentState = prevState
