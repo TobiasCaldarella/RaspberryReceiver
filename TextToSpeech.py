@@ -37,7 +37,7 @@ class TextToSpeech(object):
             pass
         
     ''' this is the only method that might be called from another thread! '''
-    def interruptSpeech(self):
+    def interrupt_set(self):
         self.logger.info("TextToSpeech: interrupting")
         self.interrupted = True
         self.downloadEvent.set() # stop waiting for download
@@ -48,10 +48,15 @@ class TextToSpeech(object):
             except:
                 self.logger.error("TextToSpeech: thread did not terminate!")
                 pass
+    
+    def interrupt_clear(self):
         self.interrupted = False
         
     ''' always call this from the same thread! '''
     def speak(self, text, lang):
+        if self.interrupted:
+            self.logger.info("Speak: Not speaking, already interrupted")
+            return
         self.logger.info("Speak: '%s'" % text)
         textEncoded = urllib.parse.quote(text, safe='')
         

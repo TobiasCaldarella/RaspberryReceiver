@@ -35,6 +35,7 @@ class Needle(object):
         self.desiredChannel = 0
         self.mtx = Lock()
         self.isMoving = False
+        self.interrupted = False
 
         for pin in { self.pinA, self.pinB, self.pinC, self.pinD }:
             GPIO.setup(pin, GPIO.OUT)
@@ -48,10 +49,18 @@ class Needle(object):
         self.logger.debug("%i needleStepsPerChannel" % self.stepsPerChannel)
         self.setNeedleForChannel(ch=None, relative=False) # ch=None since we explicitly set the position before
         
-    def interrupt(self):
+    def interrupt_set(self):
         with self.mtx:
+            self.interrupted = True
+            if self.isMoving is False:
+                return
+            self.logger.info("Needle: interrupting")
             self.desiredChannel = None
-            self.desiredPosition = None    
+            self.desiredPosition = None
+            
+    def interrupt_clear(self):
+        with self.mtx:
+            self.interrupted = False
         
     def updateIfNeedleMoving(self, ch, relative):
         with self.mtx:
@@ -74,6 +83,8 @@ class Needle(object):
     def setNeedleForChannel(self, ch, relative):
         with self.mtx:
             #eventually return channel to see if it changed in the meantime? 
+            if self.interrupted:
+                return None # interrupt requested, return immediately
             if relative is True:
                 ch = self.desiredChannel + ch
             if ch is not None:

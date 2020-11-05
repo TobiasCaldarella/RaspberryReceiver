@@ -371,14 +371,17 @@ class Coordinator(object):
         self._putJobIntoQueue(None)
         self.job_queue.join()
         self.logger.info("worker thread joined")
+        self.textToSpeech.interrupt_clear()
+        self.needle.interrupt_clear()
             
-    ''' clears all pending jobs and interrupts long-running jobs (for now only speech) '''
+    ''' clears all pending jobs and interrupts long-running jobs (for now only speech & needle) '''
     def __clearJobQueue(self):
         self.logger.info("Clearing job queue")
         while not self.job_queue.empty():
             self.job_queue.get(block=False)
             self.job_queue.task_done()
-        self.textToSpeech.interruptSpeech()
+        self.textToSpeech.interrupt_set()
+        self.needle.interrupt_set()
 
     def _putJobIntoQueue(self, job):
         try:
