@@ -115,7 +115,7 @@ class StateError(State):
             self.logger.error(ex)
             
         try:
-            self.coordinator.needle.setNeedleForChannel(ch=self.coordinator.currentChannel, relative=False, drivingThread=True, mtx=None)
+            self.coordinator.needle.setNeedleForChannel(ch=self.coordinator.currentChannel, relative=False)
         except Exception as ex:
             self.logger.error(ex)
             
@@ -209,7 +209,7 @@ class StateStopped(State):
         self.coordinator.vcb.powerOn()
         self.mpdClient.startQueueHandler()
         self.mpdClient.setVolume(100) # set this before accepting any feedback from mpd
-        self.coordinator.needle.setNeedleForChannel(ch=self.coordinator.currentChannel, relative=False, drivingThread=True, mtx=None)
+        self.coordinator.needle.setNeedleForChannel(ch=self.coordinator.currentChannel, relative=False)
         if self.coordinator.bluetoothEnabled:
             self.coordinator.bluetooth.enable()
         if self.coordinator.wheel:
@@ -232,38 +232,21 @@ class StateStopped(State):
         return True
     
 class StateRadioActive(State):
-    def __init__(self, coordinator, channel, announceChannel):
+    def __init__(self, coordinator, channel):
         transitionsFrom = {
             eStates.STOPPED: self.fromStopped,
             eStates.MPD_MUTED: self.fromMpdMuted
         }
         State.__init__(self, coordinator, eStates.RADIO_ACTIVE, transitionsFrom)
         self.channel = channel
-        self.announceChannel = announceChannel
         
     def fromStopped(self):
         # needle position already set by caller, we just start playing right away
         mpdVolume = 100
         self.gpioController.setStereoBlink(True)
         self.mpdClient.setVolume(mpdVolume)
-        # todo: load correct playlist!
-        if self.mpdClient.loadRadioPlaylist():
-            channels = self.mpdClient.getTitlesFromPlaylist()
-            numChannels = len(channels) # what to do if number of channels changed?
-            if numChannels is not self.coordinator.numChannels:
-                self.logger.warn("Number of channels changed, have to re-init needle!")
-        
+        self.mpdClient.loadRadioPlaylist()
         self.mpdClient.playTitle(playlistPosition=self.channel)
-        if self.announceChannel:
-            channelName = channels[self.channel]
-            lang='de-de'
-            if channelName.find('|lang=') >= 0:
-                channelName = channelName.split('|lang=')
-                lang = channelName[1]
-                channelName = channelName[0]
-            # speaking doesn't work yet, state not implemented
-            #self.announceTimer = threading.Timer(self.config.announceTime_s, lambda: self.speak(text=channelName,lang=lang, block=True))
-            #self.announceTimer.start()
         # wir warten hier nicht darauf, dass mpd mit dem abspielen beginnt. Das kann länger dauern und ist auch egal.
         # fehlerfall sollte durch timeouts in mpdclient abgefangen und signalisiert werden
         return True
@@ -389,10 +372,13 @@ class Coordinator(object):
         self.job_queue.join()
         self.logger.info("worker thread joined")
             
+    ''' clears all pending jobs and interrupts long-running jobs (for now only speech) '''
     def __clearJobQueue(self):
         self.logger.info("Clearing job queue")
         while not self.job_queue.empty():
             self.job_queue.get(block=False)
+            self.job_queue.task_done()
+        self.textToSpeech.interruptSpeech()
 
     def _putJobIntoQueue(self, job):
         try:
@@ -447,7 +433,7 @@ class Coordinator(object):
         self._putJobIntoQueue(self._gotoRadioActiveState)
         
     def _gotoRadioActiveState(self):
-        newState = StateRadioActive(self, self.currentChannel, False)
+        newState = StateRadioActive(self, self.currentChannel)
         if newState.transitIntoFrom(self.currentState):
             self.logger.info("Radio playing")
             self.currentState = newState
@@ -619,14 +605,16 @@ class Coordinator(object):
     def setChannel(self, channel, relative = False, setIfPowerOff = False):
         self.logger.info("channel change requested (channel=%i, relative = %s)" % (channel, relative))
         # wenn sich needle bereits bewegt, bewegung updaten
-        if self.needle.isMoving:
-            self.needle.setNeedleForChannel(ch=channel, relative=relative, drivingThread=False, mtx=None)
-        self._putJobIntoQueue(lambda: self._setChannel(channel, relative, setIfPowerOff))
+        if self.needle.updateIfNeedleMoving(ch=channel, relative=relative) is False:
+            self._putJobIntoQueue(lambda: self._setChannel(channel, relative))
         return
         
-    def _setChannel(self, channel, relative = False, setIfPowerOff = False):
+    def _setChannel(self, channel, relative = False):
         self._gotoStoppedState()
-        self.currentChannel = self.needle.setNeedleForChannel(ch=channel, relative=relative, drivingThread=True, mtx=None)
+        self.currentChannel = self.needle.setNeedleForChannel(ch=channel, relative=relative)
+        if self.currentChannel is None:
+            self.logger.info("Coordinator: setNeedleForChannel cancelled, aborting")
+            return
         self._gotoRadioActiveState()
         
         # announce channel

@@ -46,44 +46,62 @@ class Needle(object):
         self.desiredPosition = 0 # move to leftmost position to be in defined position         
         self.stepsPerChannel = int((self.numSteps-self.leftMargin)/self.numChannels)
         self.logger.debug("%i needleStepsPerChannel" % self.stepsPerChannel)
-        self.setNeedleForChannel(ch=None, relative=False, drivingThread=True, mtx=None) # ch=None since we explicitly set the position before
+        self.setNeedleForChannel(ch=None, relative=False) # ch=None since we explicitly set the position before
         
-    def setNeedleForChannel(self, ch, relative, drivingThread, mtx):  
-        #eventually return channel to see if it changed in the meantime? 
-        if relative is True:
-            ch = self.desiredChannel + ch
-        if ch is not None:
-            self.logger.debug("Setting needle to channel %i (absolute)", ch)
-        if ch is not None and (ch < 0 or ch >= self.numChannels):
-            self.logger.warn("setNeedleForChannel(%i): invalid channel" % ch)
-            return self.desiredChannel
+    def interrupt(self):
+        with self.mtx:
+            self.desiredChannel = None
+            self.desiredPosition = None    
         
-        if drivingThread:
+    def updateIfNeedleMoving(self, ch, relative):
+        with self.mtx:
+            if relative is True:
+                ch = self.desiredChannel + ch
+            if ch is not None:
+                self.logger.debug("Setting needle to channel %i (absolute)", ch)
+            if ch is not None and (ch < 0 or ch >= self.numChannels):
+                self.logger.warn("setNeedleForChannel(%i): invalid channel" % ch)
+                return False
+            
+            if not self.isMoving:
+                return False #cannot update if not moving
+            else:
+                if ch is not None:
+                    self.desiredPosition = (ch * self.stepsPerChannel) + self.leftMargin
+                    self.desiredChannel = ch
+                return True
+        
+    def setNeedleForChannel(self, ch, relative):
+        with self.mtx:
+            #eventually return channel to see if it changed in the meantime? 
+            if relative is True:
+                ch = self.desiredChannel + ch
+            if ch is not None:
+                self.logger.debug("Setting needle to channel %i (absolute)", ch)
+            if ch is not None and (ch < 0 or ch >= self.numChannels):
+                self.logger.warn("setNeedleForChannel(%i): invalid channel" % ch)
+                return self.desiredChannel
+            
             if self.isMoving:
                 self.logger.error("Already moving, refusing another drivingThread!")
-                return self.desiredChannel
+                return None
             self.isMoving = True
-        
-        if ch is not None:
-            self.desiredPosition = (ch * self.stepsPerChannel) + self.leftMargin
-            self.desiredChannel = ch
-        else:
-            ch = -1
-        self.logger.debug("needle requested at channel %i. Current: %i target: %i" % (ch, self.currentPosition, self.desiredPosition))
-        if drivingThread is True:
+            
+            if ch is not None:
+                self.desiredPosition = (ch * self.stepsPerChannel) + self.leftMargin
+                self.desiredChannel = ch
+            else:
+                ch = -1
+            self.logger.debug("needle requested at channel %i. Current: %i target: %i" % (ch, self.currentPosition, self.desiredPosition))
             self.logger.debug("we are driving thread, start moving")
-            while (self.currentPosition != self.desiredPosition):
-                if mtx is not None:
-                    mtx.release()
+            while (self.currentPosition != self.desiredPosition and self.desiredPosition is not None):
+                self.mtx.release()
                 self._adjustNeedle()
-                if mtx is not None:
-                    mtx.acquire()
+                self.mtx.acquire()
                     
             self.isMoving = False
             self.logger.debug("needle in desired position, exiting")
-        else:
-            self.logger.debug("not driving thread, updated position and that's it for now")
-        return self.desiredChannel
+            return self.desiredChannel
     
     def _adjustNeedle(self):
         self.logger.info("Moving needle from %i to %i..." % (self.currentPosition, self.desiredPosition))
