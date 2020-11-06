@@ -14,6 +14,7 @@ from time import sleep
 from Configuration import _RadioState
 from enum import Enum
 from GpioController import PowerState
+from datetime import datetime
 
 class _Connection:
     def __init__(self, parent):
@@ -49,16 +50,15 @@ class _Connection:
             return False
         
 class MpdClientEventListener(object):        
-    def __init__(self, config, coordinator):
+    def __init__(self, config, coordinator, mpdClient):
         self.config = config
         self.logger = config.logger
         self.coordinator = coordinator
         self.listen = False
-        self.status = {"started": False, "ended": False, "error": False}
         self.notifyCoordinator = False
         self.listenerThread = None
         self.client = MPDClient()
-        self.statusCnd = threading.Condition()
+        self.mpdClient = mpdClient
         
     def connect(self):
         try:
@@ -85,6 +85,7 @@ class MpdClientEventListener(object):
             self.config.logger.debug("getting mpd player status...")
             stat = self.client.status()
             playing = False
+            error = False
             currentSongInfo = None
             while ('state' in stat) and (stat['state'] == 'play') and 'error' not in stat:
                 # mpd wants to play but maybe waits for stream to start, we have to poll
@@ -123,32 +124,24 @@ class MpdClientEventListener(object):
                     self.client.play()
                 else:
                     self.logger.error("Not restarting, playback failed, already restarted @%i" % alreadyRestarted)
-                    self.status['error'] = True
+                    error = True
                     self.coordinator.gotoErrorState("Not restarting, playback failed, already restarted @%i" % alreadyRestarted)
                 
-            if self.coordinator:
-                currentSongId = None
-                currentVolume = None
-                if 'song' in stat:
-                    currentSongId = int(stat['song'])
-                if self.notifyCoordinator:
-                    self.coordinator.currentlyPlaying(mpdPlaying=playing, channel=currentSongId, 
-                                                  volume=currentVolume, currentSongInfo=currentSongInfo)
+            self.coordinator.currentSongId = None
+            if 'song' in stat:
+                self.coordinator.currentSongId = int(stat['song'])
+            self.coordinator.currentSongInfo = currentSongInfo
+                    
+            if playing:
+                self.mpdClient._updateMpdState(MpdState.STARTED)
+                
+            elif error:
+                self.mpdClient._updateMpdState(MpdState.ERROR)
+                # todo start blinking
+            else:
+                self.mpdClient._updateMpdState(MpdState.STOPPED)
             
-            with self.statusCnd:
-                if playing:
-                    self.status['started'] = True
-                    #self.coordinator.gotoMpdPlayingState()
-                    self.coordinator.gpioController.setStereolight(PowerState.ON)
-                elif self.status['started']:
-                    self.status['ended'] = True
-                    self.coordinator.gpioController.setStereolight(PowerState.OFF)
-                    #self.coordinator.gotoMpdStoppedState()
-                    # TODO: Hier muss jetzt irgendwie der Coordinator Status auf Stopped gesetzt werden. 
-                    #       Es muss aber auch unterschieden werden, ob der MPD das entschieden hat oder ob der Coordinator 
-                    #       den Stop ausgelöst hat
-                    #    Zumindest das StereoLight sollte hier ausgeschaltet werden. Status Übergang ist evtl. nicht gut!
-                self.statusCnd.notify_all()
+            self.coordinator.mpdUpdateCallback()
 
             try:
                 self.config.logger.debug("waiting for next mpd player status update...")
@@ -156,28 +149,6 @@ class MpdClientEventListener(object):
             except:
                 self.config.logger.debug("Exception during idle()")
         self.config.logger.debug("Listener thread stopped")
-        
-    def resetStatus(self):
-        self.status['started'] = False
-        self.status['ended'] = False
-        self.status['error'] = False
-        
-    def waitForStatus(self, status, timeout):
-        self.logger.debug("Waiting for status '%s'..." % status)
-        if status == 'ended' and self.status['started'] is False:
-            return True # workaround gegen hängen
-        if self.status[status] is False:
-            with self.statusCnd:
-                while self.status[status] is False:
-                    self.logger.debug("Waiting for status update")
-                    if self.statusCnd.wait(timeout) is False:
-                        self.logger.warning("Timeout waiting for status '%s'!" % status)
-                        return False
-        self.logger.debug("Status '%s' reached" % status)
-        return True
-    
-    def checkStatus(self, status):
-        return self.status[status]
     
     def setNotifyCoordinator(self, notifyCoordinator):
         self.logger.info("Setting notifyCoordinator to '%s'" % notifyCoordinator)
@@ -196,11 +167,13 @@ class MpdClientEventListener(object):
         self.disconnect()
         if self.listenerThread.is_alive():
             self.listenerThread.join(timeout=2)
-
-class eStates(Enum):
+    
+class MpdState(Enum):
     STOPPED = 0,
-    PLAYED = 1,
-    FAILED = 2
+    STOPPING = 1,
+    STARTING = 2,
+    STARTED = 3,
+    ERROR = 4
 
 class MpdClient(object):
     '''
@@ -218,10 +191,40 @@ class MpdClient(object):
         self.coordinator = coordinator
         if coordinator is not None:
             coordinator.mpdClient = self
-        self.listener = MpdClientEventListener(config, coordinator)
+        self.listener = MpdClientEventListener(config, coordinator, self)
         self.queue = queue.Queue(100)
         self.queueHandlerThread = None
         self.mpdVolume = 100
+        self.mpdState = MpdState.STOPPED
+        self.mpdStateUpdateEvent = threading.Condition()
+        self.currentSongId = None
+        self.currentSongInfo = None
+        self.currentPlaylist = None
+        
+    def _updateMpdState(self, newState: MpdState):
+        with self.mpdStateUpdateEvent:
+            self.mpdState = newState
+            self.mpdStateUpdateEvent.notifyAll()
+            
+    def getMpdState(self):
+        with self.mpdStateUpdateEvent:
+            return self.mpdState
+        
+    def waitForMpdState(self, desiredState: MpdState, timeout = 3.0):
+        startTime = datetime.now()
+        with self.mpdStateUpdateEvent:
+            while True:
+                if self.mpdState is desiredState:
+                    return True
+                if desiredState is MpdState.STARTED:
+                    if self.mpdState in [MpdState.ERROR, MpdState.STOPPING]:
+                        return False # will never reach desired state
+                if desiredState is MpdState.STOPPED:
+                    if self.mpdState in [MpdState.ERROR, MpdState.STARTING]:
+                        return False # will never reach desired state
+                ttimeout = timeout - (datetime.now() - startTime).seconds
+                if not self.mpdStateUpdateEvent.wait(ttimeout):
+                    return False
         
     def connect(self):
         self.listener.startListener()
@@ -237,9 +240,7 @@ class MpdClient(object):
     def getTitlesFromPlaylist(self):
         with self.connection:
             try:
-                pl = self.client.playlistinfo()
-                self.logger.info(pl)
-                titles = [i['name'] for i in pl]
+                titles = [i['name'] for i in self.currentPlaylist]
                 return titles
             except Exception as x:
                 self.logger.error("Caught exception in MpdClient.playlistinfo(): '%s'" % x)
@@ -247,6 +248,7 @@ class MpdClient(object):
     
     def load(self, url):
         self.logger.debug("loading url '%s'" % url)
+        ret = False
         for i in range(1,10):
             try:
                 with self.connection:
@@ -255,10 +257,21 @@ class MpdClient(object):
                     self.client.single(1)
                     self.client.consume(0)
                     self.client.repeat(1)
-                    return True
+                    ret = True
+                    break
             except:
                 self.logger.error("Error loading '%s', attempt %i/10" % (url,i))
-                time.sleep(10)
+                time.sleep(1)
+        
+        for i in range(1,10):
+            try:
+                with self.connection:
+                    self.currentPlaylist = self.client.playlistinfo()
+                    self.logger.info(self.currentPlaylist)
+                    return ret
+            except:
+                self.logger.error("Exception getting playlist, attempt %i/10" % (i))
+                time.sleep(0.1)
         return False
     
     def loadRadioPlaylist(self):
@@ -301,6 +314,7 @@ class MpdClient(object):
     
     def playTitle(self, playlistPosition, muted = False):
         self.logger.info("putting playTitle(%s) into queue..." % playlistPosition)
+        self._updateMpdState(MpdState.STARTING)
         try:
             self.queue.put(item= lambda: self._playTitle(playlistPosition, muted), block = True, timeout=0.5)
             return True
@@ -310,6 +324,7 @@ class MpdClient(object):
     
     def stop(self):
         self.logger.info("putting stop() into queue...")
+        self._updateMpdState(MpdState.STOPPING)
         try:
             self.queue.put(item= lambda: self._stop(), block = True, timeout=0.5)
             return True
@@ -362,7 +377,6 @@ class MpdClient(object):
     def _playTitle(self, playlistPosition, muted):
         self.logger.info("starting play...")
         self.coordinator.currentlyPlaying(mpdPlaying=False)
-        self.listener.resetStatus()
         with self.connection:
             try:
                 self.client.send_setvol(0)
@@ -406,12 +420,4 @@ class MpdClient(object):
     def setCoordinatorNotification(self, enabled):
         self.logger.info("setCoordinatorNotification called with enabled=%s" % enabled)
         self.listener.setNotifyCoordinator(enabled)
-        
-    def waitForStatus(self, status : eStates, timeout=10.0):
-        if status is eStates.STOPPED:
-            state = "ended"
-        elif status is eStates.PLAYED:
-            state = "started"
-        elif status is eStates.FAILED:
-            state = "error"
-        return self.listener.waitForStatus(state, timeout)
+

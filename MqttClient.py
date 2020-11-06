@@ -97,11 +97,14 @@ class MqttClient(object):
             return False
             
     
-    def pubInfo(self, radioState, channel, volume, currentSongInfo, numChannelsInPlaylist, brightness, poweredOn, bluetooth):
+    def pubInfo(self, currentState, channel, volume, currentSongInfo, numChannelsInPlaylist, brightness, poweredOn, bluetooth):
         try:
             self.logger.info("Publishing status update to mqtt")
             
-            infoDict = currentSongInfo
+            infoDict = {}
+            if currentSongInfo is not None:
+                infoDict = currentSongInfo
+                
             self.client.publish(self.config.mqtt_base_topic + "/volume", payload=str(volume))
             infoDict['volume'] = volume
             self.client.publish(self.config.mqtt_base_topic + "/channel", payload=str(channel))
@@ -122,14 +125,7 @@ class MqttClient(object):
             else:
                 infoDict['power'] = "OFF"
             
-            if radioState is _RadioState.PLAYING:
-                infoDict['state'] = "Playing_Radio"
-            elif radioState is _RadioState.BLUETOOTH:
-                infoDict['state'] = "Playing_Bluetooth"
-            elif radioState is _RadioState.STOPPED:
-                infoDict['state'] = "Stopped"
-            else:
-                infoDict['state'] = "Unknown"
+            infoDict['state'] = currentState
             if bluetooth is True:
                 infoDict['bluetooth'] = "ON"
             else:
@@ -137,8 +133,8 @@ class MqttClient(object):
             
             infoDict['notify'] = 0 # always0 for now, required to workaround bug in openHAB
             self.client.publish(self.config.mqtt_base_topic + "/info", payload=str(json.dumps(infoDict))) # output info as json string
-        except:
-            self.logger.error("Caught exception in MqttClient.pubInfo(): '%s'" % (sys.exc_info()[0]))
+        except Exception as ex:
+            self.logger.error("Caught exception in MqttClient.pubInfo(): '%s'" % (ex))
     
     def waitForSubscription(self):
         if self.connectEvent.wait(timeout=30.0) is True:
