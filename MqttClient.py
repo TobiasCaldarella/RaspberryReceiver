@@ -35,7 +35,6 @@ class MqttClient(object):
         client.message_callback_add(self.config.mqtt_base_topic + "/power/set", self.on_power_msg)
         client.message_callback_add(self.config.mqtt_base_topic + "/volume/set", self.on_volume_msg)
         client.message_callback_add(self.config.mqtt_base_topic + "/channel/set", self.on_channel_msg)
-        client.message_callback_add(self.config.mqtt_base_topic + "/notify/set", self.on_notify_msg)
         client.message_callback_add(self.config.mqtt_base_topic + "/brightness/set", self.on_brightness_msg)
         client.message_callback_add(self.config.mqtt_base_topic + "/commands", self.on_command_msg)
         self.client = client
@@ -192,24 +191,6 @@ class MqttClient(object):
         except UnicodeDecodeError:
             self.logger.warn("Invalid data over 'power' topic received, must be a utf-8 string")
     
-    def on_notify_msg(self, client, userdata, message):
-        if self.coordinator is None:
-            self.logger.warn("Received Message on 'notify' topic but no callback is set")
-            return
-        try:
-            pl = int(message.payload.decode("utf-8"))
-            if pl > 0:
-                # positive, flash backlight
-                for i in range(0,pl):
-                    self.coordinator.lightSignal()
-            elif pl < 0:
-                # negative, in future play sound
-                pass
-        except ValueError:
-            self.logger.warn("Invalid data over 'notify' topic received, must be a number in an utf-8 string")
-        except UnicodeDecodeError:
-            self.logger.warn("Invalid data over 'notify' topic received, must be a number in an utf-8 string")
-            
     def on_brightness_msg(self, client, userdata, message):
         if self.coordinator is None:
             self.logger.warn("Received Message on 'brightness' topic but no callback is set")

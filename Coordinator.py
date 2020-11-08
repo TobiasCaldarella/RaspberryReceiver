@@ -373,7 +373,7 @@ class Coordinator(object):
                 self.logger.debug("Worker thread ended")
                 return
                 
-    ''' clears all pending jobs and interrupts long-running jobs (for now only speech & needle) '''
+    ''' clears all pending jobs and interrupts long-running jobs (for now only speech, mpd fading & needle movement) '''
     def __clearJobQueue(self):
         self.logger.info("Clearing job queue")
         with self.job_queue_mtx:
@@ -382,10 +382,12 @@ class Coordinator(object):
                 self.job_queue.task_done()
             self.textToSpeech.interrupt_set()
             self.needle.interrupt_set()
+            self.mpdClient.interrupt_set()
             self.job_queue.join()
             self.logger.info("job queue empty")
             self.textToSpeech.interrupt_clear()
             self.needle.interrupt_clear()
+            self.mpdClient.interrupt_clear()
 
     def _putJobIntoQueue(self, job):
         try:
@@ -592,14 +594,6 @@ class Coordinator(object):
                 sleep(5)
                 self.gpioController.setStereoBlink(active=True, pause_s=1)
         
-    def lightSignal(self):
-        intensity = self.gpioController.backlightIntensity
-        if intensity == 0:
-            self.gpioController.setBacklight(PowerState.ON, self.config.backlight_default_brightness)
-        else:
-            self.gpioController.setBacklight(PowerState.OFF)
-        self.gpioController.setBacklight(PowerState.ON, intensity)
-        
     def blinkNeedleLight(self, blink = True):
         with self.playStateCnd:
             if blink == False:
@@ -620,10 +614,11 @@ class Coordinator(object):
         
     def _setChannel(self, channel, relative = False):
         self._gotoStoppedState()
-        self.currentChannel = self.needle.setNeedleForChannel(ch=channel, relative=relative)
-        if self.currentChannel is None:
+        newChannel = self.needle.setNeedleForChannel(ch=channel, relative=relative)
+        if newChannel is None:
             self.logger.info("Coordinator: setNeedleForChannel cancelled, aborting")
             return
+        self.currentChannel = newChannel
         self._gotoRadioActiveState()
         
         # announce channel
@@ -638,9 +633,6 @@ class Coordinator(object):
     
     def volumeUp(self):
         self.logger.info("volumeUp requested")
-        if self.poti:
-            self.poti.moveCW(self.config.motorpoti_speed)
-        #self._putJobIntoQueue(self._volumeUp)
         self._volumeUp()
 
     def _volumeUp(self):
@@ -653,32 +645,12 @@ class Coordinator(object):
             if vol > 63:
                 vol = 63
                 self.logger.debug("maximum volume reached")
-            if self.vcb:
-                self.__setVcbAndMpdVolume(vol)
-                self.currentVolume = vol
-            else:
-                self.mpdClient.setVolume(vol*(100/63))
+            self.__setVcbAndMpdVolume(vol)
+            self.currentVolume = vol
             
     def volumeDown(self):
         self.logger.info("volumeDown requested")
-        if self.poti:
-            self.poti.moveCCW(self.config.motorpoti_speed)
-        #self._putJobIntoQueue(self._volumeDown)
         self._volumeDown()
-        
-    def __setVcbAndMpdVolume(self, vol):
-        mpdVolume = 100
-        vcbVolume = vol
-        #if vol <= 0:
-        #    if vol > -9:
-        #        mpdVolume = 100 + (vol - 1) * 10
-        #        vcbVolume = 1
-        #    else:
-        #        mpdVolume = 0
-        #        vcbVolume = 0
-            
-        self.mpdClient.setVolume(mpdVolume)
-        self.vcb.setVolume(vcbVolume)
 
     def _volumeDown(self):
         #with self.playStateCnd:
@@ -690,12 +662,8 @@ class Coordinator(object):
             if vol < 0:
                 self.logger.debug("minimum volume reached")
                 vol = 0
-            if self.vcb:
-                self.__setVcbAndMpdVolume(vol)
-                self.currentVolume = vol
-            else:
-                self.mpdClient.setVolume(vol*(100/63))
-                
+            self.__setVcbAndMpdVolume(vol)
+            self.currentVolume = vol                
     
     def setVolume(self, vol, waitForPoti = False):
         self.logger.info("setVolume requested (volume = %i)" % vol)
@@ -709,12 +677,12 @@ class Coordinator(object):
                 if self.isPoweredOn():
                     if self.vcb:
                         self.__setVcbAndMpdVolume(vol)
-                    elif self.poti:
-                        self.poti.set(vol, waitForPoti)
-                    else:
-                        self.mpdClient.setVolume(vol)
                 self.currentVolume = vol
         self.sendStateToMqtt()
+        
+    def __setVcbAndMpdVolume(self, vol):
+        self.mpdClient.setVolume(100)
+        self.vcb.setVolume(vol)
             
     def isPoweredOn(self):
         return (self.powerState is _RadioPowerState.POWERED_UP)
@@ -792,7 +760,6 @@ class Coordinator(object):
             self.currentChannel = channel
             self.needle.setNeedleForChannel(channel)
         
-        # TODO: update LED status etc.
         mpdState = self.mpdClient.getMpdState()
         if mpdState is MpdState.STARTED:
             self.gpioController.setStereolight(PowerState.ON)
@@ -805,24 +772,7 @@ class Coordinator(object):
         
     def getCurrentState(self):
         return self.currentState.getEstate()
-        
-    def currentlyPlaying(self, mpdPlaying = None, channel = None, volume = None, currentSongInfo = None):
-        self.logger.debug("updating coordinator-state...")
-        with self.playStateCnd:
-            #if volume is not None:
-                #self.currentVolume = volume
 
-            if channel is not None and channel != self.currentChannel and self.radioState is _RadioState.PLAYING:
-                self.logger.warn("Unexpected channel change, adjusting needle and informing mqtt...")
-                self.currentChannel = channel
-                self.needle.setNeedleForChannel(channel)
-                
-            if currentSongInfo:
-                self.currentSongInfo = currentSongInfo
-            
-        self.logger.debug("coordinator-state updated")
-        self.sendStateToMqtt()
-    
     def sendStateToMqtt(self):
         if self.mqttClient:
             self.logger.debug("Sending current state to mqtt")

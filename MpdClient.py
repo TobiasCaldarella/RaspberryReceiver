@@ -58,23 +58,14 @@ class MpdClientEventListener(object):
         self.notifyCoordinator = False
         self.listenerThread = None
         self.client = MPDClient()
+        self.connection = _Connection(self)
         self.mpdClient = mpdClient
         
     def connect(self):
-        try:
-            self.client.connect("/run/mpd/socket")
-        except:
-            self.logger.warn("MpdClientEventListener.connect() failed: '%s'" % (sys.exc_info()[0]))
+        self.connection.connect()
     
     def disconnect(self):
-        try:
-            self.client.close()
-        except:
-            self.logger.warn("Exception during MpdClientEventListener.close(): '%s'" % (sys.exc_info()[0])) 
-        try:
-            self.client.disconnect()
-        except:
-            self.logger.warn("Exception during MpdClientEventListener.disconnect(): '%s'" % (sys.exc_info()[0])) 
+        self.connection.disconnect()
             
         # todo :stop thread
             
@@ -82,72 +73,71 @@ class MpdClientEventListener(object):
         self.config.logger.debug("Listener thread started")
         alreadyRestarted = 0
         while self.listen is True:
-            self.config.logger.debug("getting mpd player status...")
-            stat = self.client.status()
-            playing = False
-            error = False
-            currentSongInfo = None
-            while ('state' in stat) and (stat['state'] == 'play') and 'error' not in stat:
-                # mpd wants to play but maybe waits for stream to start, we have to poll
-                if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed']) > 0):
-                    # currently streaming
-                    currentSongInfo = self.client.currentsong()
-                    self.config.logger.info("MPD playing currentSongInfo: %s" % json.dumps(currentSongInfo))
-                    self.config.logger.debug("MPD playing stats: %s" % json.dumps(stat))                                 
-                    playing = True
-                    if ('volume' not in stat or int(stat['volume']) is None):
-                        #if (False):
-                        self.config.logger.info("However, no volume control was available. Pause and restart, maybe soundcard/mixer was not ready?")
-                        if alreadyRestarted < time.time()-10:
-                            alreadyRestarted = time.time()
-                            self.client.pause()
-                            self.client.play()
-                        else:
-                            self.config.logger.warning("Not restarting after volume not in stat, already restarted @%i" % alreadyRestarted)
-                    break # can go and idle
-                else:
-                    self.config.logger.debug("MPD not streaming (yet?)")
-                    time.sleep(0.1)
-                    stat = self.client.status()
-            
-            if playing:
-                self.config.logger.info("MPD playing")
-            else:
-                self.config.logger.info("MPD not playing")
+            with self.connection:
+                self.config.logger.debug("getting mpd player status...")
+                stat = self.client.status()
+                playing = False
+                error = False
+                currentSongInfo = None
+                while ('state' in stat) and (stat['state'] == 'play') and 'error' not in stat:
+                    # mpd wants to play but maybe waits for stream to start, we have to poll
+                    if ('bitrate' in stat and int(stat['bitrate']) > 0) or ('elapsed' in stat and float(stat['elapsed']) > 0):
+                        # currently streaming
+                        currentSongInfo = self.client.currentsong()
+                        self.config.logger.info("MPD playing currentSongInfo: %s" % json.dumps(currentSongInfo))
+                        self.config.logger.debug("MPD playing stats: %s" % json.dumps(stat))                                 
+                        playing = True
+                        if ('volume' not in stat or int(stat['volume']) is None):
+                            #if (False):
+                            self.config.logger.info("However, no volume control was available. Pause and restart, maybe soundcard/mixer was not ready?")
+                            if alreadyRestarted < time.time()-10:
+                                alreadyRestarted = time.time()
+                                self.client.pause()
+                                self.client.play()
+                            else:
+                                self.config.logger.warning("Not restarting after volume not in stat, already restarted @%i" % alreadyRestarted)
+                        break # can go and idle
+                    else:
+                        self.config.logger.debug("MPD not streaming (yet?)")
+                        time.sleep(0.1)
+                        stat = self.client.status()
                 
-            if 'error' in stat:
-                self.config.logger.warning("MPD reported an error: '%s'" % stat['error'])
-                if alreadyRestarted < time.time()-30:
-                    self.config.logger.warning("Trying to restart after one second")
-                    alreadyRestarted = time.time()
-                    self.client.pause()
-                    self.client.play()
+                if playing:
+                    self.config.logger.info("MPD playing")
                 else:
-                    self.logger.error("Not restarting, playback failed, already restarted @%i" % alreadyRestarted)
-                    error = True
-                    self.coordinator.gotoErrorState("Not restarting, playback failed, already restarted @%i" % alreadyRestarted)
-                
-            self.coordinator.currentSongId = None
-            if 'song' in stat:
-                self.coordinator.currentSongId = int(stat['song'])
-            self.coordinator.currentSongInfo = currentSongInfo
+                    self.config.logger.info("MPD not playing")
                     
-            if playing:
-                self.mpdClient._updateMpdState(MpdState.STARTED)
+                if 'error' in stat:
+                    self.config.logger.warning("MPD reported an error: '%s'" % stat['error'])
+                    if alreadyRestarted < time.time()-30:
+                        self.config.logger.warning("Trying to restart after one second")
+                        alreadyRestarted = time.time()
+                        self.client.pause()
+                        self.client.play()
+                    else:
+                        self.logger.error("Not restarting, playback failed, already restarted @%i" % alreadyRestarted)
+                        error = True
+                        self.coordinator.gotoErrorState("Not restarting, playback failed, already restarted @%i" % alreadyRestarted)
+                    
+                self.coordinator.currentSongId = None
+                if 'song' in stat:
+                    self.coordinator.currentSongId = int(stat['song'])
+                self.coordinator.currentSongInfo = currentSongInfo
+                        
+                if playing:
+                    self.mpdClient._updateMpdState(MpdState.STARTED)  
+                elif error:
+                    self.mpdClient._updateMpdState(MpdState.ERROR)
+                else:
+                    self.mpdClient._updateMpdState(MpdState.STOPPED)
                 
-            elif error:
-                self.mpdClient._updateMpdState(MpdState.ERROR)
-                # todo start blinking
-            else:
-                self.mpdClient._updateMpdState(MpdState.STOPPED)
-            
-            self.coordinator.mpdUpdateCallback()
-
-            try:
-                self.config.logger.debug("waiting for next mpd player status update...")
-                self.client.idle()
-            except:
-                self.config.logger.debug("Exception during idle()")
+                self.coordinator.mpdUpdateCallback()
+    
+                try:
+                    self.config.logger.debug("waiting for next mpd player status update...")
+                    self.client.idle()
+                except:
+                    self.config.logger.debug("Exception during idle()")
         self.config.logger.debug("Listener thread stopped")
     
     def setNotifyCoordinator(self, notifyCoordinator):
@@ -200,31 +190,50 @@ class MpdClient(object):
         self.currentSongId = None
         self.currentSongInfo = None
         self.currentPlaylist = None
+        self.interruptEvent = threading.Condition()
+        self.isInterrupted = False
+        self.isFading = False
         
     def _updateMpdState(self, newState: MpdState):
         with self.mpdStateUpdateEvent:
-            self.mpdState = newState
-            self.mpdStateUpdateEvent.notifyAll()
+            self.__updateMpdState(newState)
+            
+    def __updateMpdState(self, newState: MpdState):
+        self.mpdState = newState
+        self.mpdStateUpdateEvent.notifyAll()
             
     def getMpdState(self):
         with self.mpdStateUpdateEvent:
             return self.mpdState
         
-    def waitForMpdState(self, desiredState: MpdState, timeout = 3.0):
+    def waitForMpdState(self, desiredState: MpdState, timeout = 5.0):
         startTime = datetime.now()
         with self.mpdStateUpdateEvent:
             while True:
+                self.logger.info("MpdClient.waitForMpdState: desired: %s current: %s" % (desiredState, self.mpdState))
                 if self.mpdState is desiredState:
                     return True
-                if desiredState is MpdState.STARTED:
-                    if self.mpdState in [MpdState.ERROR, MpdState.STOPPING]:
-                        return False # will never reach desired state
-                if desiredState is MpdState.STOPPED:
-                    if self.mpdState in [MpdState.ERROR, MpdState.STARTING]:
-                        return False # will never reach desired state
+                #if desiredState is MpdState.STARTED:
+                    #if self.mpdState in [MpdState.ERROR, MpdState.STOPPING]:
+                    #    return False # will never reach desired state
+                #if desiredState is MpdState.STOPPED:
+                    #if self.mpdState in [MpdState.ERROR, MpdState.STARTING]:
+                    #    return False # will never reach desired state
                 ttimeout = timeout - (datetime.now() - startTime).seconds
                 if not self.mpdStateUpdateEvent.wait(ttimeout):
                     return False
+       
+    def interrupt_set(self):
+        with self.interruptEvent:
+            if self.isFading is False:
+                return
+            self.logger.info("Interrupting")
+            self.isInterrupted = True
+            self.interruptEvent.notify_all()
+            
+    def interrupt_clear(self):
+        with self.interruptEvent:
+            self.isInterrupted = False
         
     def connect(self):
         self.listener.startListener()
@@ -314,23 +323,19 @@ class MpdClient(object):
     
     def playTitle(self, playlistPosition, muted = False):
         self.logger.info("putting playTitle(%s) into queue..." % playlistPosition)
-        self._updateMpdState(MpdState.STARTING)
-        try:
-            self.queue.put(item= lambda: self._playTitle(playlistPosition, muted), block = True, timeout=0.5)
-            return True
-        except:
-            self.logger.error("Error putting job into queue!")
-            return False
+        with self.mpdStateUpdateEvent:
+            if self.mpdState == MpdState.STARTED:
+                return True
+            self.__updateMpdState(MpdState.STARTING)
+            return self.__playTitle(playlistPosition, muted)
     
     def stop(self):
         self.logger.info("putting stop() into queue...")
-        self._updateMpdState(MpdState.STOPPING)
-        try:
-            self.queue.put(item= lambda: self._stop(), block = True, timeout=0.5)
-            return True
-        except:
-            self.logger.error("Error putting job into queue!")
-            return False            
+        with self.mpdStateUpdateEvent:
+            if self.mpdState == MpdState.STOPPED:
+                return True
+            self.__updateMpdState(MpdState.STOPPING)
+            return self.__stop()
     
     def setVolume(self, vol):
         #if self.config.mpd_change_volume is False:
@@ -341,12 +346,7 @@ class MpdClient(object):
             return
             
         self.logger.info("putting setVolume(%i) into queue..." % vol)
-        try:
-            self.queue.put(item= lambda: self._setVolume(vol), block = True, timeout=0.5)
-            return True
-        except:
-            self.logger.error("Error putting job into queue!")
-            return False 
+        return self._setVolume(vol)
     
     def _setVolume(self, vol):
         self.logger.info("setting volume to %i" % vol)
@@ -359,7 +359,7 @@ class MpdClient(object):
                 self.logger.error("Caught exception in MpdClient.setVolume(): '%s'" % (sys.exc_info()[0]))
                 return False
             
-    def _stop(self):
+    def __stop(self):
         self.logger.info("stopping...")
         with self.connection:
             try:
@@ -374,45 +374,57 @@ class MpdClient(object):
                 self.logger.error("Caught exception in MpdClient.stop(): '%s'" % (sys.exc_info()[0]))
                 return False
             
-    def _playTitle(self, playlistPosition, muted):
+    def __playTitle(self, playlistPosition, muted):
         self.logger.info("starting play...")
-        self.coordinator.currentlyPlaying(mpdPlaying=False)
         with self.connection:
             try:
                 self.client.send_setvol(0)
                 self.client.send_play(playlistPosition)
                 if not muted:
-                    if self.config.mpd_change_volume is False:
-                        for vol in range(20,self.mpdVolume+1,20):
-                            self.client.send_setvol(vol)
-                            time.sleep(0.2)
+                    self._fadeIn()
                 self.logger.info("...play sent!")
                 return True
             except:
                 self.logger.error("Caught exception in MpdClient.playTitle(): '%s'" % (sys.exc_info()[0]))
                 return False
+    
+    def _fadeIn(self, immediately=False):
+        with self.interruptEvent:
+            try:
+                with self.connection:
+                    if immediately is False:
+                        self.isFading = True
+                        for vol in range(10,self.mpdVolume,10):
+                            self.client.send_setvol(vol)
+                            if self.interruptEvent.wait(0.1) or self.isInterrupted:
+                                self.client.send_setvol(0)
+                                return
+                    self.client.send_setvol(self.mpdVolume)
+            finally:
+                self.isFading = False
+            
+    def _fadeOut(self, immediately=False):
+        with self.interruptEvent:
+            try:
+                with self.connection:
+                    if immediately is False:
+                        self.isFading = True
+                        for vol in range(self.mpdVolume-10,0,10):
+                            self.client.send_setvol(vol)
+                            if self.interruptEvent.wait(0.1) or self.isInterrupted:
+                                break
+                    self.client.send_setvol(0)
+            finally:
+                self.isFading = False
             
     # this one is not async. not sure if it's a good idea...
     def mute(self, muted, immediately = False):
         try:
             self.logger.info("Muting/Unmuting mpd. mute: %s" % muted)
-            with self.connection:
-                if muted == True:
-                    if self.config.mpd_change_volume is False:
-                        if immediately is False:
-                            for vol in range(self.mpdVolume-20,-1,-10):
-                                self.client.send_setvol(vol)
-                                time.sleep(0.1)
-                        else:
-                            self.client.send_setvol(0)
-                else:
-                    if self.config.mpd_change_volume is False:
-                        if immediately is False:
-                            for vol in range(20,self.mpdVolume+1,10):
-                                self.client.send_setvol(vol)
-                                time.sleep(0.1)
-                        else:
-                            self.client.send_setvol(self.mpdVolume)
+            if muted == True:
+                self._fadeOut(immediately)
+            else:
+                self._fadeIn(immediately)
         except:
             self.logger.error("Caught exception in MpdClient.mute(): '%s'" % (sys.exc_info()[0]))
             return False

@@ -120,6 +120,9 @@ class Needle(object):
         curDesiredPosition = self.desiredPosition
         while (self.currentPosition != self.desiredPosition):
             if curDesiredPosition != self.desiredPosition:
+                if self.desiredPosition is None:
+                    self.logger.debug("interrupted! needle at %i" % self.currentPosition)
+                    return
                 self.logger.debug("desiredPosition changed from %i to %i" % (curDesiredPosition, self.desiredPosition))
                 curDesiredPosition = self.desiredPosition
                 
