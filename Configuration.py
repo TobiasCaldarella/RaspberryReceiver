@@ -99,3 +99,5 @@ class Configuration(object):
         
         self.signal_strength_dac_address = 0x48
         
+        self.upmp_config_file = "/etc/upmpdcli.conf"
+        

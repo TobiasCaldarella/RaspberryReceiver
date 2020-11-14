@@ -26,6 +26,7 @@ class _Connection:
             self.client.ping()
         except:
             try:
+                self.logger.info("MpdConnection: Ping failed")
                 self.disconnect()
             except:
                 pass
@@ -36,6 +37,8 @@ class _Connection:
     def connect(self):
         try:
             self.client.connect("/run/mpd/socket")
+            self.client.timeout = 600
+            self.client.idletimeout = None
             return True
         except:
             self.logger.error("Caught exception in MpdClient.connct(): '%s'" % (sys.exc_info()[0]))
@@ -131,7 +134,8 @@ class MpdClientEventListener(object):
                 else:
                     self.mpdClient._updateMpdState(MpdState.STOPPED)
                 
-                self.coordinator.mpdUpdateCallback()
+                if self.notifyCoordinator: 
+                    self.coordinator.mpdUpdateCallback()
     
                 try:
                     self.config.logger.debug("waiting for next mpd player status update...")
@@ -142,21 +146,28 @@ class MpdClientEventListener(object):
     
     def setNotifyCoordinator(self, notifyCoordinator):
         self.logger.info("Setting notifyCoordinator to '%s'" % notifyCoordinator)
-        self.stopListener()
+        #self.stopListener()
         self.notifyCoordinator = notifyCoordinator
-        self.startListener()
+        #self.startListener()
         
     def startListener(self):
         self.listen = True
+        self.logger.info("4 connecting")
         self.connect()
+        self.logger.info("5 connected")
         self.listenerThread = threading.Thread(target=self.do_listen, name="MpdClient.Listener")
         self.listenerThread.start()
+        self.logger.info("6 started")
         
     def stopListener(self):
         self.listen = False
+        self.logger.info("0 disconnecting")
         self.disconnect()
+        self.logger.info("1 disconnected")
         if self.listenerThread.is_alive():
+            self.logger.info("2 alive")
             self.listenerThread.join(timeout=2)
+            self.logger.info("3 joined")
     
 class MpdState(Enum):
     STOPPED = 0,

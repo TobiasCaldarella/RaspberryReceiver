@@ -21,6 +21,7 @@ import sys
 from threading import Event, Lock
 from _queue import Empty
 from MpdClient import MpdState
+import traceback
 
 class eStates(Enum):
     ERROR = 0
@@ -28,9 +29,10 @@ class eStates(Enum):
     STOPPED = 2
     RADIO_ACTIVE = 3
     BLUETOOTH_PLAYING = 4
-    DLNA_PLAYING = 5
+    UPNP_PLAYING = 5
     MPD_MUTED = 6
     SPEAKING = 7
+    IN_TRANSIT = 8
 
 class State(object):
     def __init__(self, coordinator, eState: eStates, transitionsFrom): # transitions: {eStates.ERROR: gotoErrorState, eStates.POWERED_OFF: gotoPoweredOff}
@@ -48,19 +50,32 @@ class State(object):
     def getString(self):
         return self.getEstate().name
     
-    def transitIntoFrom(self, oldState):
+    def transitInto(self):
+        oldState = self.coordinator.currentState
         if not oldState.getEstate() in self.transitionsFrom:
             self.logger.error("Coordinator: No transition from state '%s' to '%s'" % (oldState.getEstate(), self.eState))
         self.logger.info("Coordinator: Trying transition '%s' => '%s'" % (oldState.getEstate(), self.eState))
+        self.coordinator.currentState = StateInTransit()
         try:
             if self.transitionsFrom[oldState.getEstate()]() is True: # call registered transition function
                 self.logger.info("Coordinator: Transition '%s' => '%s' successful" % (oldState.getEstate(), self.eState))
+                self.coordinator.currentState = self
                 return True
             else:
                 self.logger.error("Coordinator: Transition failed with bad return value")
         except Exception as ex:
             self.logger.error("Coordinator: Transition failed with exception: '%s'" % ex)
         return False
+    
+class StateInTransit(object):
+    def __init__(self):
+        pass
+    
+    def getEstate(self):
+        return eStates.IN_TRANSIT
+    
+    def getString(self):
+        return eStates.IN_TRANSIT.name
     
 class StateError(State):
     def __init__(self, coordinator, errorInfo):
@@ -69,8 +84,11 @@ class StateError(State):
             eStates.POWERED_OFF: self.fromAny,
             eStates.STOPPED: self.fromAny,
             eStates.RADIO_ACTIVE: self.fromAny,
-            eStates.MPD_PLAYING: self.fromAny,
-            eStates.MPD_MUTED: self.fromAny
+            eStates.SPEAKING: self.fromAny,
+            eStates.MPD_MUTED: self.fromAny,
+            eStates.UPNP_PLAYING: self.fromAny,
+            eStates.BLUETOOTH_PLAYING: self.fromAny,
+            eStates.IN_TRANSIT: self.fromAny
         }
         State.__init__(self, coordinator, eStates.ERROR, transitionsFrom)
         
@@ -79,72 +97,96 @@ class StateError(State):
     
     def fromAny(self):
         # reset everything and go to an error state
+        try:    
+            self.mpdClient.setCoordinatorNotification(False)
+        except Exception as ex:
+                self.logger.error("StateError: setCoordinatorNotification failed")
+                self.logger.error(ex)
+        try:
+            self.mpdClient.stop()
+        except Exception as ex:
+            self.logger.error("StateError: mpdClient.stop failed")
+            self.logger.error(ex)
+            
+        try:
+            self.mpdClient.stopQueueHandler() 
+        except Exception as ex:
+            self.logger.error("StateError: mpdClient.stopQueueHandler failed")
+            self.logger.error(ex)
+            
         try:
             self.coordinator.setBrightness(self.coordinator.config.backlight_default_brightness)
         except Exception as ex:
+            self.logger.error("StateError: set brightness failed")
             self.logger.error(ex)
             
         try:
             self.gpioController.setBacklightBlink(True)
         except Exception as ex:
+            self.logger.error("StateError: setBacklightBlink failed")
             self.logger.error(ex)
             
         try:
             self.gpioController.setStereoBlink(PowerState.OFF)
         except Exception as ex:
+            self.logger.error("StateError: setStereoBlink failed")
             self.logger.error(ex)
             
         try:
             self.gpioController.setNeedlelight(PowerState.OFF)
         except Exception as ex:
+            self.logger.error("StateError: setNeedlelight failed")
             self.logger.error(ex)
             
         try:
             self.coordinator.signal_strength_meter.disable()
         except Exception as ex:
+            self.logger.error("StateError: signal_strength_meter failed")
             self.logger.error(ex)
             
         try:
             self.coordinator.powerState = _RadioPowerState.POWERED_UP
         except Exception as ex:
+            self.logger.error("StateError: _RadioPowerState failed")
             self.logger.error(ex)
             
-        try:
-            self.mpdClient.startQueueHandler()
-        except Exception as ex:
-            self.logger.error(ex)
+        #try:
+        #    self.mpdClient.startQueueHandler()
+        #except Exception as ex:
+        #    self.logger.error("StateError: startQueueHandler failed")
+        #    self.logger.error(ex)
             
-        try:
-            self.mpdClient.setVolume(100) # set this before accepting any feedback from mpd
-        except Exception as ex:
-            self.logger.error(ex)
+        #try:
+        #    self.mpdClient.setVolume(100) # set this before accepting any feedback from mpd
+        #except Exception as ex:
+        #    self.logger.error("StateError: setVolume failed")
+        #    self.logger.error(ex)
             
         try:
             self.coordinator.needle.setNeedleForChannel(ch=self.coordinator.currentChannel, relative=False)
         except Exception as ex:
+            self.logger.error("StateError: setNeedleForChannel failed")
             self.logger.error(ex)
             
         if self.coordinator.bluetooth:
             try:
                 self.coordinator.bluetooth.disable()
             except Exception as ex:
+                self.logger.error("StateError: bluetooth failed")
                 self.logger.error(ex)
                 
         if self.coordinator.wheel:
             try:
                 self.coordinator.wheel.disable()
             except Exception as ex:
+                self.logger.error("StateError: wheel failed")
                 self.logger.error(ex)
                 
         if self.coordinator.volumeKnob:
             try:
                 self.coordinator.volumeKnob.disable()
             except Exception as ex:
-                self.logger.error(ex)
-                
-        try:
-            self.mpdClient.setCoordinatorNotification(False) # now we are ready to receive status updates
-        except Exception as ex:
+                self.logger.error("StateError: volumeKnob failed")
                 self.logger.error(ex)
                 
         return True
@@ -152,7 +194,9 @@ class StateError(State):
 class StatePoweredOff(State):
     def __init__(self, coordinator):
         transitionsFrom = {
-            eStates.STOPPED: self.fromStopped
+            eStates.STOPPED: self.fromStopped,
+            eStates.ERROR: self.fromStopped,
+            eStates.IN_TRANSIT: self.fromStopped
         }
         State.__init__(self, coordinator, eStates.POWERED_OFF, transitionsFrom)
         
@@ -160,7 +204,7 @@ class StatePoweredOff(State):
         self.coordinator.powerState = _RadioPowerState.POWERING_DOWN
         if self.coordinator.sleepTimer:
             self.coordinator.sleepTimer.cancel()
-        self.coordinator.bluetooth.disable(wait_for_stop = False)
+        self.coordinator._bluetoothControl(False, False, True)
         if self.coordinator.wheel:
             self.coordinator.wheel.disable()
         if self.coordinator.volumeKnob:
@@ -188,7 +232,8 @@ class StateStopped(State):
             eStates.POWERED_OFF: self.fromPoweredOff,
             eStates.STOPPED: self.fromStopped,
             eStates.RADIO_ACTIVE: self.fromRadioActive,
-            eStates.MPD_MUTED: self.fromMpdMuted
+            eStates.MPD_MUTED: self.fromMpdMuted,
+            eStates.UPNP_PLAYING: self.fromUpnpPlaying
         }
         State.__init__(self, coordinator, eStates.STOPPED, transitionsFrom)
     
@@ -208,23 +253,24 @@ class StateStopped(State):
         self.gpioController.setPowerAndSpeaker(PowerState.ON) #async, returns before speakers are connected but after amp has power
         self.coordinator.powerState = _RadioPowerState.POWERING_UP
         self.coordinator.loudness = self.gpioController.getLoudnessEnabled()
-        self.coordinator.bluetoothEnabled = self.gpioController.getBluetoothEnabled()
         self.coordinator.vcb.setLoudness(self.coordinator.loudness)
         self.coordinator.vcb.setVolume(self.coordinator.currentVolume)
         self.coordinator.vcb.powerOn()
         self.mpdClient.startQueueHandler()
         self.mpdClient.setVolume(100) # set this before accepting any feedback from mpd
         self.coordinator.needle.setNeedleForChannel(ch=self.coordinator.currentChannel, relative=False)
-#         if self.coordinator.bluetoothEnabled:
-#             self.coordinator.bluetooth.enable()
         if self.coordinator.wheel:
             self.coordinator.wheel.enable()
         if self.coordinator.volumeKnob:
             self.coordinator.volumeKnob.enable()
-                
+        
+        #if self.coordinator.upmp:
+        #    self.coordinator.upmp.enable()
+        
         self.mpdClient.setCoordinatorNotification(True) # now we are ready to receive status updates
         self.mpdClient.setVolume(100) # and this just triggers an update of the mpd state so we can get a current status now
         self.coordinator.powerState = _RadioPowerState.POWERED_UP # ok, not really correct but ok as a workaround
+        self.coordinator._bluetoothControl(self.gpioController.getBluetoothEnabled(), False, True)
         self.coordinator._setSkipMqttUpdates(False)
         return True
     
@@ -234,6 +280,11 @@ class StateStopped(State):
     
     def fromMpdMuted(self):
         self.mpdClient.stop()
+        return self.mpdClient.waitForMpdState(MpdState.STOPPED)
+    
+    def fromUpnpPlaying(self):
+        self.mpdClient.stop()
+        self.gpioController.setNeedlelight(PowerState.ON)
         return self.mpdClient.waitForMpdState(MpdState.STOPPED)
     
 class StateRadioActive(State):
@@ -314,6 +365,18 @@ class StateSpeaking(State):
         # sprechen methode muss asynchron werden
         # und abbrechbar beim übergang in andere stati
         return True
+    
+class StateUpnpPlaying(State):
+    def __init__(self, coordinator):
+        transitionsFrom = {
+            eStates.STOPPED: self.fromStopped
+        }
+        State.__init__(self, coordinator, eStates.UPNP_PLAYING, transitionsFrom)
+    
+    def fromStopped(self):
+        self.gpioController.setNeedleLightBlink(True)
+        self.gpioController.setStereoBlink(True)
+        return True
 
 class Coordinator(object):
     '''
@@ -354,6 +417,7 @@ class Coordinator(object):
         self.job_queue_mtx = Lock()
         self.announceTimer = None
         self.dlnaRenderer = None
+        self.upmp = None
     
         self.currentState = None
         
@@ -367,7 +431,11 @@ class Coordinator(object):
                 try:
                     job()
                 except Exception as ex:
-                    self.logger.error("Exception in worker thread: '%s'" % ex)
+                    st = ""
+                    for line in traceback.format_stack():
+                        st = st + "\n" + line
+                    self.logger.error("Exception in worker thread: '%s' @%s" % (ex, st))
+                    self.currentState = StateError(self, "Exception in worker thread")
             self.job_queue.task_done()
             if job is None:
                 self.logger.debug("Worker thread ended")
@@ -423,8 +491,7 @@ class Coordinator(object):
     
     def _gotoErrorState(self, errorDescription):
         errorState = StateError(self, errorDescription)
-        errorState.transitIntoFrom(self.currentState)
-        self.currentState = errorState
+        errorState.transitInto()
         # Todo: wait and switch from error to stopped after some time and restart queue worker thread
     
     def gotoStoppedState(self):
@@ -433,10 +500,9 @@ class Coordinator(object):
         
     def _gotoStoppedState(self):
         newState = StateStopped(self)
-        if not newState.transitIntoFrom(self.currentState):
+        if not newState.transitInto():
             self.currentState = StateError(self, "Failed to stop")
             return False
-        self.currentState = newState
         
     def gotoRadioActiveState(self):
         self.logger.info("Goto radio active state requested!")
@@ -444,9 +510,8 @@ class Coordinator(object):
         
     def _gotoRadioActiveState(self):
         newState = StateRadioActive(self, self.currentChannel)
-        if newState.transitIntoFrom(self.currentState):
+        if newState.transitInto():
             self.logger.info("Radio playing")
-            self.currentState = newState
         else:
             self.currentState = StateError(self, "Failed to go to radio active state")
             return False
@@ -454,8 +519,8 @@ class Coordinator(object):
     
     def _gotoMutedState(self):
         newState = StateMuted(self)
-        if newState.transitIntoFrom(self.currentState):
-            self.currentState = newState
+        if newState.transitInto():
+            pass
         else:
             self.currentState = StateError(self, "Failed to go to muted state")
             return False
@@ -463,8 +528,8 @@ class Coordinator(object):
             
     def _gotoSpeakingState(self):
         newState = StateSpeaking(self)
-        if newState.transitIntoFrom(self.currentState):
-            self.currentState = newState
+        if newState.transitInto():
+            pass
         else:
             self.currentState = StateError(self, "Failed to go to speaking state")
             return False
@@ -484,13 +549,12 @@ class Coordinator(object):
             return True
         
         if self._gotoStoppedState() is False:
-            return False
+            pass # try to power off anyhow, we might be in error state and this likely will work
 
         newState = StatePoweredOff(self)
-        if not newState.transitIntoFrom(self.currentState):
+        if not newState.transitInto():
             self.currentState = StateError(self, "Failed to power off")
             return False
-        self.currentState = newState
         self.logger.info("Powered down")
         return True
     
@@ -500,7 +564,7 @@ class Coordinator(object):
     
     def _powerOn(self):
         self.logger.info("Power up sequence started...")
-        if self.currentState.getEstate() is not eStates.POWERED_OFF:
+        if self.currentState.getEstate() not in [eStates.POWERED_OFF, eStates.ERROR]:
             self.logger.info("Already powered on, not doing anything")
             return True
         
@@ -603,6 +667,11 @@ class Coordinator(object):
                     self.gpioController.setNeedlelight(PowerState.OFF)
             else:
                 self.gpioController.setNeedleLightBlink(active=True, pause_s = 0)
+                
+    def startRadio(self):
+        self.logger.info("restarting radio")
+        self.__clearJobQueue() # interrupt anything else
+        self._putJobIntoQueue(lambda: self._setChannel(self.currentChannel, False))
     
     def setChannel(self, channel, relative = False, setIfPowerOff = False):
         self.logger.info("channel change requested (channel=%i, relative = %s)" % (channel, relative))
@@ -613,6 +682,10 @@ class Coordinator(object):
         return
         
     def _setChannel(self, channel, relative = False):
+        if (relative is True and channel is 0) or (relative is False and channel == self.currentChannel and self.currentState.getEstate() is eStates.RADIO_ACTIVE):
+            self.logger.info("Coordinator: already in desired channel, not doing anything")
+            return
+
         self._gotoStoppedState()
         newChannel = self.needle.setNeedleForChannel(ch=channel, relative=relative)
         if newChannel is None:
@@ -738,19 +811,22 @@ class Coordinator(object):
             
     def _speak(self, text, lang):
         prevState = self.currentState
-        self._gotoMutedState()
-        self._gotoSpeakingState()
+        if self._gotoMutedState() is False:
+            return False
+        if self._gotoSpeakingState() is False:
+            return False
         # this one here will block the queue, so make it interruptable
         wasInterrupted = False
         if self.textToSpeech.speak(text, lang) is False:
             wasInterrupted = True
         self._gotoMutedState()
         if wasInterrupted:
-            return
-        if prevState.transitIntoFrom(self.currentState):
-            self.currentState = prevState
+            return True
+        if prevState.transitInto():
+            return True
         else:
             self.currentState = StateError(self, "Failed to go back to previous state")
+            return False
     
     def mpdUpdateCallback(self):
         self.logger.info("Got update from mpd")
@@ -852,27 +928,33 @@ class Coordinator(object):
 #             self.playStateCnd.notify_all()        
 #             
     def bluetoothControl(self, enabled):
-        self.logger.warn("Coordinator: bluetooth control not implemented")
-        return
         self._putJobIntoQueue(lambda: self._bluetoothControl(enabled))
-#         
-#     def _bluetoothControl(self, enabled):
-#         with self.playStateCnd:
-#             if self.bluetoothEnabled == enabled:
-#                 self.logger.info("BT already in desired state (%s)" % self.bluetoothEnabled)
-#                 return
-#             self.bluetoothEnabled = enabled
-#         if enabled:
-#             self.logger.info("Activating bluetooth")
-#             self.speak("Aktiviere Bluetooth","de-de",True)
-#             if self.isPoweredOn():
-#                 self.bluetooth.enable()
-#             else:
-#                 self.logger.info("Not powered on, not activating bluetooth")
-#         else:
-#             self.logger.info("Deactivating bluetooth")
-#             self.speak("Deaktiviere Bluetooth","de-de",True)
-#             self.bluetooth.disable()
+           
+    def _bluetoothControl(self, enabled, speak=True, force=False):
+        if self.bluetoothEnabled == enabled and force is False:
+            self.logger.info("BT already in desired state (%s)" % self.bluetoothEnabled)
+            return
+        self.bluetoothEnabled = enabled
+        if enabled:
+            self.logger.info("Activating bluetooth/upnp")
+            if self.isPoweredOn() or force:
+                if speak:
+                    self._speak("Aktiviere UPNP", "de-de")
+                if self.bluetooth:
+                    self.bluetooth.enable()
+                if self.upmp:
+                    self.upmp.enable()
+            else:
+                self.logger.info("Not powered on, not activating bluetooth/upnp")
+        else:
+            if self.isPoweredOn() or force:
+                self.logger.info("Deactivating bluetooth/upnp")
+                if speak:
+                    self.speak("Deaktiviere UPNP", "de-de")
+            if self.bluetooth:
+                self.bluetooth.disable()
+            if self.upmp:
+                self.upmp.disable()
     
     def setSkipMqttUpdates(self, skip):
         self.logger.info("setSkipMqttUpdates(skip='%s')" % skip)
@@ -891,4 +973,31 @@ class Coordinator(object):
         self.loudness = state
         if self.vcb:
             self.vcb.setLoudness(state)
+            
+    def upnpStopCallback(self):
+        if self.currentState.getEstate() == eStates.UPNP_PLAYING:
+            self.logger.info("Coordinator: Upnp playback stopped")
+            self.startRadio()
+        else:
+            self.logger.info("Coordinator: Not in state eStates.UPNP_PLAYING, not doing anything")
         
+    def upnpPlaybackStartCallback(self):
+        self.logger.info("Coordinator: Upnp playback starts")
+        self.__clearJobQueue()
+        self._putJobIntoQueue(self._upnpupnpPlaybackStartCallback)
+        
+    def _upnpupnpPlaybackStartCallback(self):
+        if self.currentState.getEstate() is eStates.UPNP_PLAYING:
+            self.info("Coordinator: Already in state UPNP_PLAYING")
+            return
+        newState = StateStopped(self)
+        if newState.transitInto():
+            pass
+        else:
+            self.logger.error("Transition failed")
+        
+        self._speak("UPNP Wiedergabe beginnt", "de-de")
+        newState = StateUpnpPlaying(self)
+        if newState.transitInto() is False:
+            self.currentState = StateError(self, "Upnp Playing failed")
+            return      

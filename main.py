@@ -24,6 +24,7 @@ import threading
 import VolumeControlBoard
 import VolumeKnobRotaryEncoder
 import RygelDlnaRenderer
+import Upmp
 
 GPIO.cleanup()
 GPIO.setmode(GPIO.BCM)
@@ -55,9 +56,10 @@ if __name__ == '__main__':
     pwrcnt = GpioController.GpioController(config, coordinator, i2cMtx)
     mpdClient = MpdClient.MpdClient(config, coordinator)
     needle = Needle.Needle(config, coordinator)
-    bluetooth = Bluetooth.Bluetooth(config, coordinator)
+    #bluetooth = Bluetooth.Bluetooth(config, coordinator)
     textToSpeech = TextToSpeech.TextToSpeech(config, coordinator)
     dlnaRenderer = RygelDlnaRenderer.RygelDlnaRenderer(config, coordinator)
+    upmp = Upmp.Upmp(config, coordinator)
     #motorPoti = MotorPoti.MotorPoti(config, coordinator, pwrcnt)
     vcb = VolumeControlBoard.VolumeControlBoard(config, coordinator, i2cMtx)
     if (config.gpio_vol_right and config.gpio_vol_left):
