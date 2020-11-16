@@ -230,8 +230,8 @@ class MpdClient(object):
                 #if desiredState is MpdState.STOPPED:
                     #if self.mpdState in [MpdState.ERROR, MpdState.STARTING]:
                     #    return False # will never reach desired state
-                ttimeout = timeout - (datetime.now() - startTime).seconds
-                if not self.mpdStateUpdateEvent.wait(ttimeout):
+                ttimeout = timeout - (datetime.now() - startTime).seconds #Todo: make this interruptable!
+                if not self.mpdStateUpdateEvent.wait(ttimeout) or self.isInterrupted:
                     return False
        
     def interrupt_set(self):
@@ -241,6 +241,7 @@ class MpdClient(object):
             self.logger.info("Interrupting")
             self.isInterrupted = True
             self.interruptEvent.notify_all()
+            self.mpdStateUpdateEvent.notify_all() # also interrupt, someone might be waiting there as well!
             
     def interrupt_clear(self):
         with self.interruptEvent:
