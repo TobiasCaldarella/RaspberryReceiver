@@ -241,6 +241,7 @@ class MpdClient(object):
             self.logger.info("Interrupting")
             self.isInterrupted = True
             self.interruptEvent.notify_all()
+        with self.mpdStateUpdateEvent:
             self.mpdStateUpdateEvent.notify_all() # also interrupt, someone might be waiting there as well!
             
     def interrupt_clear(self):
