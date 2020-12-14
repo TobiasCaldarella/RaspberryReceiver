@@ -160,6 +160,8 @@ class MpdClientEventListener(object):
         self.logger.info("6 started")
         
     def stopListener(self):
+        if self.listenerThread is None:
+            return
         self.listen = False
         self.logger.info("0 disconnecting")
         self.disconnect()

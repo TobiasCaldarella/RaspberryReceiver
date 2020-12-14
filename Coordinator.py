@@ -127,7 +127,7 @@ class StateError(State):
             self.logger.error(ex)
             
         try:
-            self.gpioController.setStereoBlink(PowerState.OFF)
+            self.gpioController.setStereoBlink(True)
         except Exception as ex:
             self.logger.error("StateError: setStereoBlink failed")
             self.logger.error(ex)

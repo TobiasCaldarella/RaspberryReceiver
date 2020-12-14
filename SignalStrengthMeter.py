@@ -46,7 +46,12 @@ class SignalStrengthMeter(object):
     def disable(self):
         self.logger.info("SignalStrenghtMeter stopping...")
         self.run = False
+        if self.t is None:
+            self.logger.info("SignalStrengthMeter Thread already stopped")
+            return
+        self.logger.info("SignalStrengthMeter Thread joining")
         self.t.join()
+        self.logger.info("SignalStrengthMeter Thread joined")
     
     def processStats(self):
         self.logger.info("SignalStrenghtMeter thread started!")
@@ -77,11 +82,3 @@ class SignalStrengthMeter(object):
         
         self.logger.info("SignalStrenghtMeter thread ended")
         self.t = None
-                    
-                    
-                    
-        
-        
-        
-        
-        
