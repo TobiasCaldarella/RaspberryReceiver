@@ -300,6 +300,7 @@ class StateRadioActive(State):
         # needle position already set by caller, we just start playing right away
         mpdVolume = 100
         self.gpioController.setStereoBlink(True)
+        self.gpioController.setNeedlelight(PowerState.ON)
         self.mpdClient.setVolume(mpdVolume)
         self.mpdClient.loadRadioPlaylist()
         self.mpdClient.playTitle(playlistPosition=self.channel)
@@ -715,8 +716,8 @@ class Coordinator(object):
                 return
             vol = self.currentVolume
             vol+=1
-            if vol > 63:
-                vol = 63
+            if vol > 66:
+                vol = 66
                 self.logger.debug("maximum volume reached")
             self.__setVcbAndMpdVolume(vol)
             self.currentVolume = vol
@@ -744,7 +745,7 @@ class Coordinator(object):
     
     def _setVolume(self, vol, waitForPoti):
         with self.playStateCnd:
-            if vol < 0 or vol > 63:
+            if vol < 0 or vol > 66:
                 self.logger.warn("Received invalid volume: %i", vol)
             else:
                 if self.isPoweredOn():

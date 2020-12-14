@@ -30,7 +30,7 @@ class Configuration(object):
         self.logger = None
         
         # MQTT
-        self.mqtt_server = '192.168.1.3'
+        self.mqtt_server = 'openhabianpi.frugoli'
         self.mqtt_port = 1883
         self.mqtt_user = 'zigbee'
         self.mqtt_pass = 'zigbee'
@@ -56,8 +56,8 @@ class Configuration(object):
         self.volPotiAddress = 0x28
         self.ldsPotiAddress = 0x29
         self.vcbPortMpxAddress = 0x20
-        self.loudnessPoint = 15
-        self.maxLoudness = 61 
+        self.loudnessPoint = 35
+        self.maxLoudness = 63 
         # GPIOs tuning wheel rotary encoder
         self.gpio_mag_left = 24
         self.gpio_mag_right = 4

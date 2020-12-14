@@ -7,6 +7,7 @@ import smbus
 import sys
 import threading
 import time
+from math import sqrt
 from Coordinator import Coordinator
 from Configuration import Configuration, _RadioPowerState
 
@@ -86,6 +87,11 @@ class VolumeControlBoard(object):
         self.loudnessEnabled = False
         self.currentVolume = 0
         self.poweredOn = False
+
+        self.startLoudness = 10
+        self.volExtraLowSteps = int(sqrt(self.startLoudness))
+        self.maxVolumePhy = 63
+        self.maxVolume = self.maxVolumePhy + self.volExtraLowSteps
         
     def init(self):
         with self.mtx:
@@ -119,21 +125,43 @@ class VolumeControlBoard(object):
             if self.poweredOn is False:
                 self.volPoti.init()
                 self.ldsPoti.init()
+            volExtraLowSteps = self.volExtraLowSteps
+            if self.currentVolume <= 0:
+                volVal = 0
+            elif self.currentVolume <= volExtraLowSteps:
+                volVal = 1
+            else:
+                volVal = self.currentVolume - volExtraLowSteps
             ldsVal = 0
-            if self.loudnessEnabled is True and self.currentVolume > 0:
-                diffFromPoint = self.loudnessPoint - self.currentVolume
-                if diffFromPoint > 0:
-                    ldsVal = max(int(self.maxLoudness - (diffFromPoint*1.5)), self.currentVolume)
-                else:
-                    ldsVal = self.maxLoudness - (-diffFromPoint)
+            maxVolume = self.maxVolumePhy
+            maxLoudness = self.maxLoudness
+            startLoudness = self.startLoudness
+            endLoudness = 10
+            loudnessPoint = self.loudnessPoint
+            diffFromPoint = volVal - loudnessPoint
+
+            if self.currentVolume <= volExtraLowSteps: # "ab"use loudness against zero to lower volume even more in three steps
+                ldsVal = int(pow(2,(self.currentVolume-1))-1)
+                #ldsVal = int(startLoudness * ((self.currentVolume-1)/volExtraLowSteps))
+            elif diffFromPoint > 0:
+                steep = (maxLoudness-endLoudness)/(maxVolume-loudnessPoint)
+                ldsVal = int(maxLoudness-steep*diffFromPoint)
+            else: #if self.currentVolume > volExtraLowSteps:
+                steep = (maxLoudness-startLoudness)/(loudnessPoint-1)
+                ldsVal = int(maxLoudness-steep*(-diffFromPoint))
+
+            if self.loudnessEnabled is True and volVal > 0:
                 self.mpx.setPin(self.i2cLoudnessRelaisPinLow, False)
             else:
                 self.mpx.setPin(self.i2cLoudnessRelaisPinLow, True)
-            self.volPoti.setPoti(self.currentVolume)
+
+            ldsVal = self.maxVolumePhy - ldsVal # poti inverted to better match with log scale
+
+            self.logger.info("VCB set values: volume %i, loudness %i" % (volVal, ldsVal))
+            self.volPoti.setPoti(volVal)
             self.ldsPoti.setPoti(ldsVal)
-            self.logger.info("VCB set values: volume %i, loudness %i" % (self.currentVolume, ldsVal))
-        except:
-            self.logger.error("VCB: Exception setting volume: %s" % sys.exc_info()[0])
+        except Exception as ex:
+            self.logger.error("VCB: Exception setting volume: %s" % ex)
         finally:
             self.mpx.setPin(self.i2cEnablePinLow, True)
         
@@ -141,15 +169,15 @@ class VolumeControlBoard(object):
         if volume < 0:
             self.logger.error("VCB: volume % is invalid. using 0!" % volume)
             volume = 0
-        if volume > 63:
-            self.logger.error("VCB: volume % is invalid. using 63!" % volume)
-            volume = 63
-         
+        if volume > self.maxVolume:
+            self.logger.error("VCB: volume %d is invalid. using %d!" % (volume, self.maxVolume))
+            volume = self.maxVolume
+        9 
         with self.mtx:
             self.currentVolume = volume
             if self.poweredOn is True:
                 self._updateVolume()
-        
+
     def setLoudness(self, lds):
         with self.mtx:
             self.loudnessEnabled = lds
